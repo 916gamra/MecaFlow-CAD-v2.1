@@ -1,0 +1,163 @@
+/**
+ * ViewportGizmo – orientation cube in the corner of the 3D viewport.
+ * Shows A-end (Pan/مقلاة) and B-end (Handle/مقبض) clearly.
+ * Syncs rotation with the main scene camera.
+ */
+import React, { useEffect, useRef } from 'react';
+import * as THREE from 'three';
+
+interface ViewportGizmoProps {
+  cameraRef: React.RefObject<THREE.PerspectiveCamera | null>;
+}
+
+const SIZE = 96; // matches D-Pad 24 * 4px = 96px
+
+// Face definitions for orientation cube
+const FACES: { dir: THREE.Vector3; label: string; color: string; labelColor: string }[] = [
+  { dir: new THREE.Vector3( 0,  0,  1), label: 'A', color: '#000000', labelColor: '#00e5ff' },
+  { dir: new THREE.Vector3( 0,  0, -1), label: 'B', color: '#000000', labelColor: '#ff6b35' },
+  { dir: new THREE.Vector3( 0,  1,  0), label: 'Y+', color: '#000000', labelColor: '#888888' },
+  { dir: new THREE.Vector3( 0, -1,  0), label: 'Y-', color: '#000000', labelColor: '#888888' },
+  { dir: new THREE.Vector3( 1,  0,  0), label: 'X+', color: '#000000', labelColor: '#888888' },
+  { dir: new THREE.Vector3(-1,  0,  0), label: 'X-', color: '#000000', labelColor: '#888888' },
+];
+
+// Create a canvas texture with text for a cube face
+function makeTextTexture(text: string, bgColor: string, textColor: string): THREE.CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  // Background - darker sleek look
+  ctx.fillStyle = '#111111';
+  ctx.fillRect(0, 0, size, size);
+  
+  // Inner metallic gradient instead of flat fill
+  const grad = ctx.createLinearGradient(0, 0, size, size);
+  grad.addColorStop(0, '#222222');
+  grad.addColorStop(1, '#0a0a0a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(4, 4, size - 8, size - 8);
+
+  // Border - subtle white
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(4, 4, size - 8, size - 8);
+
+  // Text
+  ctx.fillStyle = textColor;
+  ctx.font = 'bold 24px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, size / 2, size / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+export const ViewportGizmo: React.FC<ViewportGizmoProps> = ({ cameraRef }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const gizmoCameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Mini renderer
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setSize(SIZE, SIZE);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    rendererRef.current = renderer;
+
+    // Mini scene
+    const scene = new THREE.Scene();
+    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+    const dirL = new THREE.DirectionalLight(0xffffff, 0.5);
+    dirL.position.set(2, 3, 2);
+    scene.add(dirL);
+
+    // Mini camera
+    const cam = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+    cam.position.set(0, 0, 3.5);
+    gizmoCameraRef.current = cam;
+
+    // Build cube with textured faces
+    // THREE.js BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z
+    const faceMap = [
+      FACES[4], // +X
+      FACES[5], // -X
+      FACES[2], // +Y (فوق)
+      FACES[3], // -Y (تحت)
+      FACES[0], // +Z (A - مقلاة)
+      FACES[1], // -Z (B - مقبض)
+    ];
+
+    const materials = faceMap.map(f =>
+      new THREE.MeshStandardMaterial({
+        map: makeTextTexture(f.label, f.color, f.labelColor),
+        roughness: 0.5,
+        metalness: 0.1,
+      })
+    );
+
+    const cubeGeom = new THREE.BoxGeometry(1.4, 1.4, 1.4);
+    const cubeMesh = new THREE.Mesh(cubeGeom, materials);
+    scene.add(cubeMesh);
+
+    // Edge wireframe for clarity
+    const edges = new THREE.EdgesGeometry(cubeGeom);
+    const edgeLine = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 }));
+    cubeMesh.add(edgeLine);
+
+    // Animate: sync rotation with main camera
+    let animId: number;
+    const animate = () => {
+      animId = requestAnimationFrame(animate);
+      const mainCam = cameraRef.current;
+      if (mainCam && gizmoCameraRef.current) {
+        const q = mainCam.quaternion.clone();
+        gizmoCameraRef.current.position.set(0, 0, 3.5).applyQuaternion(q);
+        gizmoCameraRef.current.lookAt(0, 0, 0);
+      }
+      renderer.render(scene, cam);
+    };
+    animate();
+
+    return () => {
+      cancelAnimationFrame(animId);
+      renderer.dispose();
+      materials.forEach(m => { m.map?.dispose(); m.dispose(); });
+      cubeGeom.dispose();
+      edges.dispose();
+    };
+  }, [cameraRef]);
+
+  return (
+    <div
+      className="absolute bottom-6 right-6 flex flex-col items-center gap-2 z-20 glass-panel p-3 rounded-2xl border border-white/10 shadow-2xl backdrop-blur-md select-none"
+      title="مكعب التوجيه — A = المقلاة (أمام)، B = المقبض (خلف)"
+    >
+      <div className="text-[10px] text-[var(--text-dim)] font-bold tracking-widest text-center mb-1">المنظور</div>
+      
+      <div className="relative w-24 h-24 bg-black/40 rounded-full flex items-center justify-center border border-white/5 shadow-inner overflow-hidden">
+        <canvas
+          ref={canvasRef}
+          width={SIZE}
+          height={SIZE}
+          className="absolute inset-0"
+        />
+      </div>
+
+      <div className="flex gap-2 text-[8px] font-bold font-mono mt-1 px-2 py-1 bg-white/5 rounded-xl border border-white/5">
+        <span className="text-[var(--accent-blue)]">A مقلاة</span>
+        <span className="text-[var(--accent-orange,orange)]">B مقبض</span>
+      </div>
+    </div>
+  );
+};
+
+export default ViewportGizmo;
