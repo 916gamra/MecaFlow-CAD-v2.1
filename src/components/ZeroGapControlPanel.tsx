@@ -14,6 +14,8 @@ interface ControlPanelProps {
   canGoPrev: boolean;
   onOpenDrafting: () => void;
   onOpenCNC: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
 const PrecisionControl = ({
@@ -61,7 +63,7 @@ const PrecisionControl = ({
 
 const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
   config, onUpdate, onExport, wizardStep, onNext, onPrev, canGoNext, canGoPrev,
-  onOpenDrafting, onOpenCNC,
+  onOpenDrafting, onOpenCNC, onUndo, onRedo,
 }) => {
   const updatePan = (key: keyof ZeroGapState['pan'], val: string | number) => {
     const numericVal = typeof val === 'string' ? parseFloat(val) || 0 : val;
@@ -120,8 +122,10 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
           <h3 className="text-[12px] font-bold text-[var(--accent)] uppercase tracking-widest">{stepTitle}</h3>
           <p className="text-[9px] text-[var(--text-dim)] font-mono mt-0.5">MecaFlow CAD / {wizardStep}</p>
         </div>
-        <div className="flex gap-2">
-          <label className="cursor-pointer px-2 py-1 bg-black/40 border border-[var(--border)] rounded text-[9px] text-[var(--text-main)] hover:border-[var(--accent-blue)] transition-colors">
+        <div className="flex gap-1">
+          <button onClick={onUndo} title="تراجع" className="p-1 text-[var(--text-dim)] hover:text-white">↺</button>
+          <button onClick={onRedo} title="إعادة" className="p-1 text-[var(--text-dim)] hover:text-white">↻</button>
+          <label className="cursor-pointer ml-2 px-2 py-1 bg-black/40 border border-[var(--border)] rounded text-[9px] text-[var(--text-main)] hover:border-[var(--accent-blue)] transition-colors">
             تحميل
             <input type="file" accept=".json" className="hidden" onChange={(e) => {
               if (e.target.files && e.target.files[0]) {
@@ -133,7 +137,7 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
               }
             }}/>
           </label>
-          <button
+            <button
             onClick={() => {
               const data = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(config, null, 2));
               const a = document.createElement('a');

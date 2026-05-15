@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ThreeCanvas from './components/ThreeCanvas';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import DraftingView from './components/DraftingView';
@@ -8,6 +8,7 @@ import WizardStepper from './components/WizardStepper';
 import DashboardView from './components/DashboardView';
 import { CADState, WizardStep, WIZARD_STEPS } from './types';
 import { loadConfigFromStorage, saveConfigToStorage } from './lib/storageUtils';
+import { useProjectHistory } from './hooks/useProjectHistory';
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -44,7 +45,7 @@ export default function App() {
     showBorders: true,
   };
 
-  const [state, setState] = useState<CADState>(() => {
+  const initialState: CADState = (() => {
     const savedConfig = loadConfigFromStorage();
     // Migrate old configs that lack handle
     const zeroGap = savedConfig
@@ -59,7 +60,14 @@ export default function App() {
       zeroGap,
       wizardStep: 'dashboard',
     };
-  });
+  })();
+
+  const { state, push, undo, redo } = useProjectHistory(initialState);
+  
+  // Wrapper to update state
+  const setState = (updater: (prev: CADState) => CADState) => {
+    push(updater(state));
+  };
 
   useEffect(() => {
     saveConfigToStorage(state.zeroGap);
@@ -228,6 +236,8 @@ export default function App() {
                 canGoPrev={canGoPrev}
                 onOpenDrafting={() => setOverlayView('drafting')}
                 onOpenCNC={() => setOverlayView('cnc')}
+                onUndo={undo}
+                onRedo={redo}
               />
             </div>
           )}
