@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ZeroGapState, WizardStep, WIZARD_LABELS } from '../types';
 import { generateCadQueryScript } from '../lib/exportUtils';
 import { generateGcode } from '../lib/gcodeGenerator';
+import { useProfiles } from '../hooks/useProfiles';
+import { SavedProfile } from '../lib/profileStorage';
+import { ProfileDetails } from './ProfileDetails';
 
 interface ControlPanelProps {
   config: ZeroGapState;
@@ -65,6 +68,9 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
   config, onUpdate, onExport, wizardStep, onNext, onPrev, canGoNext, canGoPrev,
   onOpenDrafting, onOpenCNC, onUndo, onRedo,
 }) => {
+  const { profiles, addProfile, deleteProfile } = useProfiles();
+  const [viewingProfilesType, setViewingProfilesType] = useState<'tube' | 'pan' | 'handle' | null>(null);
+
   const updatePan = (key: keyof ZeroGapState['pan'], val: string | number) => {
     const numericVal = typeof val === 'string' ? parseFloat(val) || 0 : val;
     onUpdate({ ...config, pan: { ...config.pan, [key]: numericVal } });
@@ -114,8 +120,97 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
   // ── Step label ────────────────────────────────────────────────────────
   const stepTitle = WIZARD_LABELS[wizardStep];
 
+  const [savingProfileType, setSavingProfileType] = useState<'tube' | 'pan' | 'handle' | null>(null);
+  const [newProfileName, setNewProfileName] = useState('');
+
+  const handleSaveProfile = (type: 'tube' | 'pan' | 'handle') => {
+    setSavingProfileType(type);
+    setNewProfileName('');
+  };
+
+  if (viewingProfilesType) {
+    const filteredProfiles = profiles.filter(p => p.type === viewingProfilesType);
+    return (
+      <aside className="w-full h-full flex flex-col" id="zero-gap-panel">
+        <div className="p-3 border-b border-[var(--border)] flex justify-between items-center bg-white/5">
+          <div>
+            <h3 className="text-[12px] font-bold text-[var(--accent)] uppercase tracking-widest">النماذج المحفوظة</h3>
+          </div>
+          <button onClick={() => setViewingProfilesType(null)} className="px-2 py-1 bg-black/40 border border-[var(--border)] rounded text-[9px] hover:text-white transition-colors">
+            رجوع
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 custom-scrollbar">
+          {filteredProfiles.length === 0 ? (
+            <div className="text-center text-[var(--text-dim)] text-[10px] py-4">لا توجد نماذج محفوظة من هذا النوع</div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {filteredProfiles.map(p => (
+                <div key={p.id} className="p-3 bg-white/5 border border-[var(--border)] hover:border-[var(--accent-blue)] rounded cursor-pointer transition-colors"
+                  onClick={() => {
+                    onUpdate({ ...config, [p.type]: p.data });
+                  }}
+                >
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-[12px] font-bold">{p.name}</span>
+                    <button onClick={(e) => { e.stopPropagation(); deleteProfile(p.id); }} className="text-red-400 hover:text-red-300 text-[10px]">حذف</button>
+                  </div>
+                  <ProfileDetails profile={p} />
+                  <div className="text-[10px] text-[var(--text-dim)] flex justify-between mt-2 items-center">
+                    <span>{new Date(p.createdAt).toLocaleDateString()}</span>
+                    <button onClick={() => { onUpdate({ ...config, [p.type]: p.data }); setViewingProfilesType(null); }} className="px-2 py-1 bg-[var(--accent)] text-white rounded font-bold">اختيار</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
+    );
+  }
+
   return (
-    <aside className="w-full h-full flex flex-col" id="zero-gap-panel">
+    <aside className="w-full h-full flex flex-col relative" id="zero-gap-panel">
+      {savingProfileType && (
+        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-[100] p-4">
+          <div className="bg-[#0c0d10] border border-[var(--accent)] rounded p-4 w-full shadow-xl" dir="rtl">
+            <h3 className="text-[12px] font-bold text-white mb-2">حفظ النموذج</h3>
+            <input 
+              type="text" 
+              className="w-full bg-black/50 border border-[var(--border)] outline-none focus:border-[var(--accent)] rounded px-3 py-2 text-white text-[12px] mb-4"
+              placeholder="اسم النموذج..."
+              value={newProfileName}
+              onChange={e => setNewProfileName(e.target.value)}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newProfileName.trim()) {
+                  addProfile(newProfileName.trim(), savingProfileType, config[savingProfileType]);
+                  setSavingProfileType(null);
+                }
+              }}
+            />
+            <div className="flex justify-end gap-2">
+              <button 
+                className="px-3 py-1.5 text-[10px] border border-[var(--border)] hover:bg-white/5 rounded text-white transition-colors"
+                onClick={() => setSavingProfileType(null)}
+              >
+                إلغاء
+              </button>
+              <button 
+                className="px-3 py-1.5 text-[10px] bg-[var(--accent)] hover:opacity-90 text-white rounded font-bold transition-opacity"
+                onClick={() => {
+                  if (newProfileName.trim()) {
+                    addProfile(newProfileName.trim(), savingProfileType, config[savingProfileType]);
+                    setSavingProfileType(null);
+                  }
+                }}
+              >
+                حفظ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Panel Header */}
       <div className="p-3 border-b border-[var(--border)] flex justify-between items-center bg-white/5">
         <div>
@@ -157,6 +252,20 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
            ════════════════════════════════════════════════════════════════ */}
         {wizardStep === 'tube-design' && (
           <>
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setViewingProfilesType('tube')}
+                className="flex-1 py-1 px-2 border border-[var(--border)] rounded text-[10px] text-[var(--accent)] hover:border-[var(--accent)] transition-colors uppercase font-bold"
+              >
+                اختيار من نماذج محفوظة
+              </button>
+              <button
+                onClick={() => handleSaveProfile('tube')}
+                className="py-1 px-2 border border-[var(--border)] rounded text-[10px] text-white bg-[var(--accent)] hover:opacity-90 transition-opacity uppercase font-bold"
+              >
+                حفظ النموذج
+              </button>
+            </div>
             <section className="mb-6 border-b border-[var(--border)] pb-2">
               <label className="block text-[10px] font-bold text-[var(--text-dim)] uppercase mb-3 text-right">شكل مقطع الأنبوب</label>
               <div className="flex bg-[#0c0d10] p-1 border border-[var(--border)] rounded mb-4">
@@ -217,6 +326,20 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
            ════════════════════════════════════════════════════════════════ */}
         {wizardStep === 'pan-design' && (
           <>
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setViewingProfilesType('pan')}
+                className="flex-1 py-1 px-2 border border-[var(--border)] rounded text-[10px] text-amber-400 hover:border-amber-400 transition-colors uppercase font-bold"
+              >
+                اختيار مقلاة محفوظة
+              </button>
+              <button
+                onClick={() => handleSaveProfile('pan')}
+                className="py-1 px-2 border border-[var(--border)] rounded text-[10px] text-black bg-amber-400 hover:opacity-90 transition-opacity uppercase font-bold"
+              >
+                حفظ المقلاة
+              </button>
+            </div>
             <section className="mb-6 border-b border-[var(--border)] pb-2">
               <label className="block text-[10px] font-bold text-[var(--text-dim)] uppercase mb-3 text-right">أبعاد المقلاة</label>
               {renderSlider('القطر السفلي (القاع)', config.pan.bottomDiameter, v => updatePan('bottomDiameter', v), 50, 400)}
@@ -247,6 +370,20 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
            ════════════════════════════════════════════════════════════════ */}
         {wizardStep === 'handle-design' && (
           <>
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setViewingProfilesType('handle')}
+                className="flex-1 py-1 px-2 border border-[var(--border)] rounded text-[10px] text-emerald-400 hover:border-emerald-400 transition-colors uppercase font-bold"
+              >
+                اختيار مقبض محفوظ
+              </button>
+              <button
+                onClick={() => handleSaveProfile('handle')}
+                className="py-1 px-2 border border-[var(--border)] rounded text-[10px] text-black bg-emerald-400 hover:opacity-90 transition-opacity uppercase font-bold"
+              >
+                حفظ المقبض
+              </button>
+            </div>
             <section className="mb-4 border-b border-[var(--border)] pb-2">
               <label className="block text-[10px] font-bold text-emerald-400 uppercase mb-3 text-right">شكل المقبض</label>
               <div className="flex bg-[#0c0d10] p-1 border border-[var(--border)] rounded mb-4">
