@@ -68,7 +68,22 @@ export default function App() {
 
   // ── Wizard navigation ─────────────────────────────────────────────────────
   const setWizardStep = (step: WizardStep) => {
-    setState(prev => ({ ...prev, wizardStep: step }));
+    setState(prev => {
+      let newRenderMode = prev.zeroGap.renderMode;
+      if (step === 'pan-tube-cut' || step === 'tube-handle-cut') {
+        newRenderMode = 'preview';
+      } else if (step === 'final-inspect') {
+        newRenderMode = 'boolean';
+      }
+      return { 
+        ...prev, 
+        wizardStep: step,
+        zeroGap: {
+          ...prev.zeroGap,
+          renderMode: newRenderMode
+        }
+      };
+    });
   };
 
   const currentStepIdx = WIZARD_STEPS.indexOf(state.wizardStep);
