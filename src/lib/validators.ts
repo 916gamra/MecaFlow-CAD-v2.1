@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export interface ValidationErrorItem {
   field: string;
   message: string;
@@ -10,66 +12,62 @@ export class ValidationError extends Error {
   }
 }
 
+const TubeConfigSchema = z.object({
+  width: z.number().gt(0, 'العرض يجب أن يكون أكبر من 0'),
+  height: z.number().gt(0, 'الارتفاع يجب أن يكون أكبر من 0'),
+  thickness: z.number().gt(0),
+  totalLength: z.number().gt(0, 'الطول الإجمالي يجب أن يكون أكبر من 0'),
+  partLength: z.number().gt(0),
+}).refine(data => data.partLength <= data.totalLength, {
+  message: 'طول الجزء يجب أن يكون بين 0 والطول الإجمالي',
+  path: ['partLength']
+});
+
 export function validateTubeConfig(config: any) {
-  const errors: ValidationErrorItem[] = [];
-
-  if (!config.width || config.width <= 0) {
-    errors.push({ field: 'width', message: 'العرض يجب أن يكون أكبر من 0' });
-  }
-  if (!config.height || config.height <= 0) {
-    errors.push({ field: 'height', message: 'الارتفاع يجب أن يكون أكبر من 0' });
-  }
-  const maxThickness = Math.min(config.width, config.height) / 2 - 0.1;
-  if (!config.thickness || config.thickness <= 0 || config.thickness >= maxThickness) {
-    errors.push({ field: 'thickness', message: `سمك الجدار يجب أن يكون أقل من ${maxThickness.toFixed(1)}mm` });
-  }
-  if (!config.totalLength || config.totalLength <= 0) {
-    errors.push({ field: 'totalLength', message: 'الطول الإجمالي يجب أن يكون أكبر من 0' });
-  }
-  if (!config.partLength || config.partLength <= 0 || config.partLength > config.totalLength) {
-    errors.push({ field: 'partLength', message: 'طول الجزء يجب أن يكون بين 0 والطول الإجمالي' });
-  }
-
-  if (errors.length > 0) {
+  const result = TubeConfigSchema.safeParse(config);
+  if (!result.success) {
+    const errors = result.error.issues.map(issue => ({
+      field: issue.path.join('.'),
+      message: issue.message
+    }));
     throw new ValidationError(errors);
   }
 }
+
+const PanConfigSchema = z.object({
+  bottomDiameter: z.number().gt(0, 'قطر القاع يجب أن يكون أكبر من 0'),
+  topDiameter: z.number().gt(0),
+  height: z.number().gt(0, 'الارتفاع يجب أن يكون أكبر من 0'),
+  curveRadius: z.number().gte(0, 'نصف قطر المنحنى لا يمكن أن يكون سالباً').optional(),
+  wallThickness: z.number().gt(0, 'سمك الجدار يجب أن يكون أكبر من 0').optional(),
+}).refine(data => data.topDiameter > data.bottomDiameter, {
+  message: 'قطر الأعلى يجب أن يكون أكبر من قطر القاع',
+  path: ['topDiameter']
+});
 
 export function validatePanConfig(config: any) {
-  const errors: ValidationErrorItem[] = [];
-
-  if (!config.bottomDiameter || config.bottomDiameter <= 0) {
-    errors.push({ field: 'bottomDiameter', message: 'قطر القاع يجب أن يكون أكبر من 0' });
-  }
-  if (!config.topDiameter || config.topDiameter <= config.bottomDiameter) {
-    errors.push({ field: 'topDiameter', message: 'قطر الأعلى يجب أن يكون أكبر من قطر القاع' });
-  }
-  if (!config.height || config.height <= 0) {
-    errors.push({ field: 'height', message: 'الارتفاع يجب أن يكون أكبر من 0' });
-  }
-  if (config.curveRadius != null && config.curveRadius < 0) {
-    errors.push({ field: 'curveRadius', message: 'نصف قطر المنحنى لا يمكن أن يكون سالباً' });
-  }
-  if (config.wallThickness != null && config.wallThickness <= 0) {
-    errors.push({ field: 'wallThickness', message: 'سمك الجدار يجب أن يكون أكبر من 0' });
-  }
-
-  if (errors.length > 0) {
+  const result = PanConfigSchema.safeParse(config);
+  if (!result.success) {
+    const errors = result.error.issues.map(issue => ({
+      field: issue.path.join('.'),
+      message: issue.message
+    }));
     throw new ValidationError(errors);
   }
 }
 
+const AssemblyConfigSchema = z.object({
+  tiltAngle: z.number().min(-90).max(90),
+  insertionDistance: z.number().gte(0),
+});
+
 export function validateAssemblyConfig(config: any) {
-  const errors: ValidationErrorItem[] = [];
-
-  if (config.tiltAngle < -90 || config.tiltAngle > 90) {
-    errors.push({ field: 'tiltAngle', message: 'زاوية الميل يجب أن تكون بين -90 و 90 درجة' });
-  }
-  if (config.insertionDistance < 0) {
-    errors.push({ field: 'insertionDistance', message: 'مسافة الإدراج يجب أن تكون موجبة' });
-  }
-
-  if (errors.length > 0) {
+  const result = AssemblyConfigSchema.safeParse(config);
+  if (!result.success) {
+    const errors = result.error.issues.map(issue => ({
+      field: issue.path.join('.'),
+      message: issue.message
+    }));
     throw new ValidationError(errors);
   }
 }

@@ -7,6 +7,7 @@ import { ZeroGapState, WizardStep } from '../types';
 import { validateTubeConfig, validatePanConfig } from '../lib/validators';
 import { performanceOptimizer } from '../lib/performanceOptimizer';
 import { ViewportGizmo } from './ViewportGizmo';
+import { errorHandler } from '../lib/errorHandler';
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Box, Focus, Cylinder } from 'lucide-react';
 
 
@@ -805,8 +806,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         }
 
       } catch (e: any) {
-        console.error('Zero-Gap Engine Error:', e);
-        const errorMessage = e?.message || 'فشل في إنشاء الشكل الهندسي';
+        const errorMessage = errorHandler.handle(e, 'GeometryEngine');
         setEngineError(errorMessage);
         setTimeout(() => setEngineError(null), 5000);
       }
@@ -818,7 +818,18 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         debounceTimerRef.current = null;
       }
     };
-  }, [config, gridVisible, webglError, wizardStep]);
+  }, [
+    config.tube,
+    config.pan,
+    config.assembly,
+    config.handle,
+    config.thermalClearance,
+    config.showBorders,
+    config.renderMode,
+    gridVisible,
+    webglError,
+    wizardStep
+  ]);
 
   // ─── Snap View Handler ────────────────────────────────────────────────────────
   const handleSnapView = (view: string) => {
@@ -944,4 +955,4 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
   );
 });
 
-export default ThreeCanvas;
+export default React.memo(ThreeCanvas);

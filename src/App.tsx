@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ThreeCanvas from './components/ThreeCanvas';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import DraftingView from './components/DraftingView';
 import CNCView from './components/CNCView';
 import ZeroGapControlPanel from './components/ZeroGapControlPanel';
@@ -156,12 +157,14 @@ export default function App() {
               )}
 
               {showCanvas && (
-                <ThreeCanvas
-                  ref={canvasRef}
-                  config={state.zeroGap}
-                  gridVisible={state.gridVisible}
-                  wizardStep={state.wizardStep}
-                />
+                <ErrorBoundary fallback={<div className="absolute inset-0 flex items-center justify-center p-4 bg-zinc-950/90 text-red-400 text-sm font-bold text-center">خطأ في العرض ثلاثي الأبعاد</div>}>
+                  <ThreeCanvas
+                    ref={canvasRef}
+                    config={state.zeroGap}
+                    gridVisible={state.gridVisible}
+                    wizardStep={state.wizardStep}
+                  />
+                </ErrorBoundary>
               )}
 
               {/* Overlay: DraftingView / CNCView */}
