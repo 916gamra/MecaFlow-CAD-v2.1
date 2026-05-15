@@ -332,11 +332,65 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         let handleMeshObj: THREE.Mesh | null = null;
         if (needsHandle) {
           const hCfg = config.handle;
+          const isSolid = !!hCfg.solid;
+          
           if (hCfg.shape === 'cylindrical') {
-            handleGeom = new THREE.CylinderGeometry(hCfg.width / 2, hCfg.width / 2, hCfg.depth, 32, 1, false);
+            if (isSolid) {
+              handleGeom = new THREE.CylinderGeometry(hCfg.width / 2, hCfg.width / 2, hCfg.depth, 32, 1, false);
+            } else {
+              const outerR = hCfg.width / 2;
+              const innerR = Math.max(0.1, outerR - hCfg.thickness);
+              const outerCyl = new THREE.CylinderGeometry(outerR, outerR, hCfg.depth, 32, 1, true);
+              const innerCyl = new THREE.CylinderGeometry(innerR, innerR, hCfg.depth, 32, 1, true);
+              const topRing = new THREE.RingGeometry(innerR, outerR, 32);
+              topRing.rotateX(-Math.PI / 2); topRing.translate(0, hCfg.depth / 2, 0);
+              const bottomRing = new THREE.RingGeometry(innerR, outerR, 32);
+              bottomRing.rotateX(Math.PI / 2); bottomRing.translate(0, -hCfg.depth / 2, 0);
+              try { handleGeom = BufferGeometryUtils.mergeGeometries([outerCyl, innerCyl, topRing, bottomRing], false); }
+              catch { handleGeom = outerCyl; }
+            }
             handleGeom.rotateX(Math.PI / 2);
           } else {
-            handleGeom = new THREE.BoxGeometry(hCfg.width, hCfg.height, hCfg.depth);
+            const hw = hCfg.width, hh = hCfg.height, hd = hCfg.depth;
+            const hr = Math.min(hCfg.cornerRadius, hw / 2, hh / 2);
+            const hShape = new THREE.Shape();
+            const hx = -hw / 2, hy = -hh / 2;
+            if (hr > 0) {
+              hShape.moveTo(hx + hr, hy); hShape.lineTo(hx + hw - hr, hy);
+              hShape.quadraticCurveTo(hx + hw, hy, hx + hw, hy + hr);
+              hShape.lineTo(hx + hw, hy + hh - hr);
+              hShape.quadraticCurveTo(hx + hw, hy + hh, hx + hw - hr, hy + hh);
+              hShape.lineTo(hx + hr, hy + hh);
+              hShape.quadraticCurveTo(hx, hy + hh, hx, hy + hh - hr);
+              hShape.lineTo(hx, hy + hr);
+              hShape.quadraticCurveTo(hx, hy, hx + hr, hy);
+            } else {
+              hShape.moveTo(hx, hy); hShape.lineTo(hx + hw, hy);
+              hShape.lineTo(hx + hw, hy + hh); hShape.lineTo(hx, hy + hh); hShape.closePath();
+            }
+            if (!isSolid) {
+              const it = hCfg.thickness;
+              if (it > 0 && it < hw / 2 && it < hh / 2) {
+                const ir = Math.max(0, hr - it);
+                const ix = hx + it, iy = hy + it, iw = hw - 2 * it, ih = hh - 2 * it;
+                const hole = new THREE.Path();
+                if (ir > 0) {
+                  hole.moveTo(ix + ir, iy); hole.lineTo(ix + iw - ir, iy);
+                  hole.quadraticCurveTo(ix + iw, iy, ix + iw, iy + ir);
+                  hole.lineTo(ix + iw, iy + ih - ir);
+                  hole.quadraticCurveTo(ix + iw, iy + ih, ix + iw - ir, iy + ih);
+                  hole.lineTo(ix + ir, iy + ih);
+                  hole.quadraticCurveTo(ix, iy + ih, ix, iy + ih - ir);
+                  hole.lineTo(ix, iy + ir);
+                  hole.quadraticCurveTo(ix, iy, ix + ir, iy);
+                } else {
+                  hole.moveTo(ix, iy); hole.lineTo(ix + iw, iy);
+                  hole.lineTo(ix + iw, iy + ih); hole.lineTo(ix, iy + ih); hole.closePath();
+                }
+                hShape.holes.push(hole);
+              }
+            }
+            handleGeom = new THREE.ExtrudeGeometry(hShape, { depth: hd, bevelEnabled: false, curveSegments: 16 });
           }
           handleGeom.center();
           handleMeshObj = new THREE.Mesh(handleGeom, new THREE.MeshStandardMaterial({ color: 0x22c55e, metalness: 0.5, roughness: 0.3 }));
@@ -344,34 +398,90 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         }
 
         // ── 3. Pan ────────────────────────────────────────────────
-        let panGeom: THREE.CylinderGeometry | null = null;
+        let panGeom: THREE.LatheGeometry | null = null;
         let panMesh: THREE.Mesh | null = null;
-        let panInnerGeom: THREE.CylinderGeometry | null = null;
+        let panInnerGeom: THREE.LatheGeometry | null = null;
         let panInnerMesh: THREE.Mesh | null = null;
 
         if (needsPan) {
           const wt = config.pan.wallThickness || 2.0;
+          const rBottom = config.pan.innerMoldMode
+            ? config.pan.bottomDiameter / 2 + wt
+            : config.pan.bottomDiameter / 2;
+          const rTop = config.pan.innerMoldMode
+            ? config.pan.topDiameter / 2 + wt
+            : config.pan.topDiameter / 2;
           const panH = config.pan.height;
-          const rTopOut = config.pan.innerMoldMode ? config.pan.topDiameter / 2 + wt : config.pan.topDiameter / 2;
-          const rBotOut = config.pan.innerMoldMode ? config.pan.bottomDiameter / 2 + wt : config.pan.bottomDiameter / 2;
-          
-          panGeom = new THREE.CylinderGeometry(Math.max(1, rTopOut), Math.max(1, rBotOut), panH, 64, 1, false);
-          panGeom.translate(0, panH / 2, 0); // Put base at Y=0
+          const rimThick = config.pan.rimThickness || 2.0;
+          const curveRad = config.pan.curveRadius ?? 100.0;
+          const filletR = config.pan.bottomFilletRadius || 8.0;
+          const addRim = config.pan.addRim;
+          const rimH = config.pan.rimHeight || 3.0;
 
+          const buildPanProfile = (rOff: number): THREE.Vector2[] => {
+            const rb = Math.max(1, rBottom - rOff);
+            const rt = Math.max(1, rTop - rOff);
+            const fR = Math.max(0, filletR - rOff);
+            const p: THREE.Vector2[] = [];
+
+            if (config.pan.removeBottom) {
+              p.push(new THREE.Vector2(0, rOff > 0 ? wt : 0));
+              p.push(new THREE.Vector2(rb, rOff > 0 ? wt : 0));
+            } else {
+              p.push(new THREE.Vector2(0, rOff > 0 ? wt : 0));
+              if (fR > 0) {
+                const segs = 16;
+                for (let i = 0; i <= segs; i++) {
+                  const theta = (Math.PI / 2) * (1 - i / segs);
+                  p.push(new THREE.Vector2(rb - fR + fR * Math.cos(theta), (rOff > 0 ? wt : 0) + fR - fR * Math.sin(theta)));
+                }
+              } else {
+                p.push(new THREE.Vector2(rb, rOff > 0 ? wt : 0));
+              }
+            }
+
+            const startZ = (rOff > 0 ? wt : 0) + (config.pan.removeBottom ? 0 : fR);
+            const bulgeReduction = rOff >= wt ? rOff * 0.3 : 0;
+            const bulge = Math.max(1.0, Math.min(20.0, (200.0 / curveRad) * 4.0) - bulgeReduction);
+            const rM = (rb + rt) / 2.0 + bulge;
+            const zM = (startZ + panH) / 2.0;
+            const cpx = 2 * rM - 0.5 * rb - 0.5 * rt;
+            const cpy = 2 * zM - 0.5 * startZ - 0.5 * panH;
+            const c = new THREE.QuadraticBezierCurve(
+              new THREE.Vector2(rb, startZ), new THREE.Vector2(cpx, cpy), new THREE.Vector2(rt, panH)
+            );
+            p.push(...c.getPoints(32).slice(1));
+            
+            if (addRim && rOff === 0) {
+              p.push(new THREE.Vector2(rt + rimThick, panH));
+              p.push(new THREE.Vector2(rt + rimThick, panH + rimH));
+              p.push(new THREE.Vector2(0, panH + rimH));
+            } else {
+              p.push(new THREE.Vector2(rt + (rOff === 0 ? rimThick : 0), panH));
+              p.push(new THREE.Vector2(0, panH));
+            }
+            return p.filter((pt, i) => i === 0 || !pt.equals(p[i - 1]));
+          };
+
+          const outerPts = buildPanProfile(0);
+          panGeom = new THREE.LatheGeometry(outerPts, 64);
           panMesh = new THREE.Mesh(panGeom, new THREE.MeshStandardMaterial({ 
             color: 0xff3333, 
-            side: THREE.FrontSide, 
+            side: THREE.DoubleSide, 
             opacity: config.renderMode === 'boolean' ? 0.0 : 0.8, 
             transparent: true 
           }));
           panMesh.name = 'zerogap_pan';
 
           if (config.pan.useShellPreview) {
-            const rTopIn = Math.max(0.1, rTopOut - wt);
-            const rBotIn = Math.max(0.1, rBotOut - wt);
-            panInnerGeom = new THREE.CylinderGeometry(rTopIn, rBotIn, panH, 64, 1, false);
-            panInnerGeom.translate(0, panH / 2 + wt, 0);
-            panInnerMesh = new THREE.Mesh(panInnerGeom, new THREE.MeshStandardMaterial({ color: 0xff3333, side: THREE.FrontSide, opacity: 0.8, transparent: true }));
+            const innerPts = buildPanProfile(wt);
+            panInnerGeom = new THREE.LatheGeometry(innerPts, 64);
+            panInnerMesh = new THREE.Mesh(panInnerGeom, new THREE.MeshStandardMaterial({ 
+              color: 0xff3333, 
+              side: THREE.DoubleSide, 
+              opacity: 0.8, 
+              transparent: true 
+            }));
             panInnerMesh.name = 'zerogap_pan_inner';
           }
         }
@@ -566,23 +676,20 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
           }
 
           resultBrush.geometry.computeBoundingBox();
-          const gb = resultBrush.geometry.boundingBox;
-          if (gb && isFinite(gb.min.x)) {
-            shiftX = -(gb.min.x+gb.max.x)/2;
-            shiftY = -(gb.min.y+gb.max.y)/2;
-            shiftZ = -(gb.min.z+gb.max.z)/2;
-            resultBrush.geometry.translate(shiftX, shiftY, shiftZ);
-          }
+          // Boolean CSG evaluation works in World Space. The resulting geometry
+          // already has all rotations, positions and cuts applied.
+          // There is no need to translate the geometry or copy quaternions from tubeMesh.
+          
           resultBrush.geometry.computeVertexNormals();
 
           const resultMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2, side: THREE.DoubleSide });
           finalResultMesh = new THREE.Mesh(resultBrush.geometry, resultMat);
           finalResultMesh.name = 'zerogap_result';
 
-          // Keep piece centered on 0,0,0 (user request)
+          // Maintain centered position in the canvas at 0,0,0
           finalResultMesh.position.set(0, 0, 0);
-          finalResultMesh.quaternion.copy(tubeMesh.quaternion);
-          finalResultMesh.scale.copy(tubeMesh.scale);
+          finalResultMesh.rotation.set(0, 0, 0);
+          finalResultMesh.scale.set(1, 1, 1);
           finalResultMesh.updateMatrixWorld(true);
 
           if (config.showBorders) {
