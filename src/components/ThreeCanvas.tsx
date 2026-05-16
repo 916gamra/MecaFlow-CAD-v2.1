@@ -781,7 +781,8 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
 
                 if (config.showBorders || config.showToolpathPreview) {
                    const edges = new THREE.EdgesGeometry(contactForEdges.geometry, 30);
-                   const filteredEdges = filterCutPathEdges(edges, tubeMesh.matrixWorld, config.tube.partLength, config.tube.width, config.tube.height || config.tube.width, config.tube.shape === 'دائري');
+                   const filteredEdges = edges; // Testing WITHOUT filtering
+                   console.log('RAW pan edges count:', filteredEdges.attributes.position.array.length / 6);
                    
                    const saddle = new THREE.LineSegments(filteredEdges, new THREE.LineBasicMaterial({ 
                      color: 0x00ffff, linewidth: 2, depthTest: false, transparent: true, opacity: 0.9
@@ -856,9 +857,10 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
 
                 if (config.showBorders || config.showToolpathPreview) {
                    const edges = new THREE.EdgesGeometry(contact.geometry, 30);
-                   const filteredEdges = filterCutPathEdges(edges, tubeMesh.matrixWorld, config.tube.partLength, config.tube.width, config.tube.height || config.tube.width, config.tube.shape === 'دائري');
+                   const filteredEdges = edges; // Testing WITHOUT filtering
+                   console.log('RAW handle edges count:', filteredEdges.attributes.position.array.length / 6);
                    
-                   const saddle = new THREE.LineSegments(filteredEdges, new THREE.LineBasicMaterial({ 
+                   const saddle = new THREE.LineSegments(filteredEdges, new THREE.LineBasicMaterial({
                      color: 0x00ffff, linewidth: 2, depthTest: false, transparent: true, opacity: 0.9
                    }));
                    saddle.name = 'zerogap_handle_ring';
