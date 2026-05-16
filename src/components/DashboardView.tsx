@@ -7,6 +7,7 @@ interface DashboardViewProps {
   onLoadSTL: (buffer: ArrayBuffer, name: string) => void;
   onLoadConfig: () => void;
   hasSavedConfig: boolean;
+  onOpenViewer: () => void;
 }
 
 const DashboardView: React.FC<DashboardViewProps> = ({
@@ -14,6 +15,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   onLoadSTL,
   onLoadConfig,
   hasSavedConfig,
+  onOpenViewer,
 }) => {
   const { profiles, deleteProfile } = useProfiles();
   const [showLibrary, setShowLibrary] = useState(false);
@@ -148,6 +150,19 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <h3 className="card-title">مكتبة النماذج</h3>
           <p className="card-desc">تصفح الأنابيب، المقالي، والمقابض المحفوظة</p>
+        </button>
+
+        {/* File Viewer */}
+        <button className="dashboard-card card-settings" onClick={onOpenViewer}>
+          <div className="card-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+          </div>
+          <h3 className="card-title">معاينة الملفات 3D</h3>
+          <p className="card-desc">رفع ملفات STL وعرضها في بيئة ثلاثية الأبعاد</p>
         </button>
       </div>
 

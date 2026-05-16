@@ -437,9 +437,9 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
 
             <section className="mb-4">
               <label className="block text-[10px] font-bold text-[var(--text-dim)] uppercase mb-3 text-right">المعايير البصرية</label>
-              {renderToggle('عرض خط التماس (سرج الحصان)', config.showBorders,
+              {renderToggle('عرض مسار القطع (خط أزرق أيوني)', config.showBorders,
                 () => onUpdate({ ...config, showBorders: !config.showBorders }),
-                '#a855f7')}
+                '#00ffff')}
             </section>
           </>
         )}
@@ -473,9 +473,9 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
 
             <section className="mb-4">
               <label className="block text-[10px] font-bold text-[var(--text-dim)] uppercase mb-3 text-right">المعايير البصرية</label>
-              {renderToggle('عرض خط التماس', config.showBorders,
+              {renderToggle('عرض مسار القطع (خط أزرق أيوني)', config.showBorders,
                 () => onUpdate({ ...config, showBorders: !config.showBorders }),
-                '#22c55e')}
+                '#00ffff')}
             </section>
           </>
         )}
@@ -491,15 +491,52 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
               {renderToggle('تنعيم حافة القطع (0.2mm)', config.addFillet, () => onUpdate({ ...config, addFillet: !config.addFillet }))}
               {renderToggle('إضافة تخليص حراري (+0.1mm)', config.thermalClearance, () => onUpdate({ ...config, thermalClearance: !config.thermalClearance }))}
               {renderToggle('التعليم المرجعي (Laser Mark)', config.markOrientation, () => onUpdate({ ...config, markOrientation: !config.markOrientation }))}
+              {renderToggle('إظهار مسار القطع والأطراف (Toolpath)', !!config.showToolpathPreview, () => onUpdate({ ...config, showToolpathPreview: !config.showToolpathPreview }), '#10b981')}
+
             </section>
 
             {/* DraftingView / CNCView buttons */}
+            <section className="mb-6 flex gap-2">
+              <button
+                onClick={onOpenDrafting}
+                className="flex-1 py-3 border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-white text-[11px] font-bold rounded flex flex-col items-center gap-1 transition-colors"
+                title="عرض المخططات"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                مخطط تصنيع
+              </button>
+              <button
+                onClick={onOpenCNC}
+                className="flex-1 py-3 border border-zinc-700 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-fg)] text-[11px] font-bold rounded flex flex-col items-center gap-1 transition-colors"
+                title="العرض للتصنيع"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                الماكينة CNC
+              </button>
+            </section>
             <section className="mb-6 border-b border-[var(--border)] pb-4">
-              <label className="block text-[10px] font-bold text-[var(--text-dim)] uppercase mb-3 text-right">مشاهد إضافية</label>
-              <div className="flex gap-2">
-                <button onClick={onOpenDrafting} className="flex-1 py-2 text-[10px] font-bold uppercase border border-blue-500/50 text-blue-400 rounded hover:bg-blue-500/10 transition-colors">مخططات 2D</button>
-                <button onClick={onOpenCNC} className="flex-1 py-2 text-[10px] font-bold uppercase border border-green-500/50 text-green-400 rounded hover:bg-green-500/10 transition-colors">تحضير CNC</button>
-              </div>
+               <button
+                onClick={() => {
+                  try {
+                    const r = generateGcode(config);
+                    if (r.error) { alert(r.error); return; }
+                    exportManufacturingFile(r.gcode, 'nc');
+                  } catch (err) { alert('فشل: ' + (err instanceof Error ? err.message : '')); }
+                }}
+                className="w-full py-2 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 font-bold text-[11px] uppercase tracking-widest rounded border border-emerald-500/50 transition-colors"
+                title="يصدر G-code الأولي المبني على المسار التجريبي"
+              >
+                تصدير G-CODE تجريبي
+              </button>
             </section>
 
             {/* Export */}

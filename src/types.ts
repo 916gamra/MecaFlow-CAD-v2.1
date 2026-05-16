@@ -114,6 +114,8 @@ export interface ZeroGapState {
   markOrientation: boolean;
   showGlow: boolean;
   showBorders: boolean;
+  showGhostPart?: boolean;
+  showToolpathPreview?: boolean;
 }
 
 export interface CADState {

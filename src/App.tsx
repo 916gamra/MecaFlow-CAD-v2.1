@@ -3,6 +3,7 @@ import ThreeCanvas from './components/ThreeCanvas';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import DraftingView from './components/DraftingView';
 import CNCView from './components/CNCView';
+import { FileViewer } from './components/FileViewer';
 import ZeroGapControlPanel from './components/ZeroGapControlPanel';
 import WizardStepper from './components/WizardStepper';
 import DashboardView from './components/DashboardView';
@@ -51,6 +52,7 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [hasSavedConfig, setHasSavedConfig] = useState(false);
   const [dbLoaded, setDbLoaded] = useState(false);
+  const [targetDimensions, setTargetDimensions] = useState<{l: number, w: number, h: number} | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowSplash(false), 2000);
@@ -119,8 +121,8 @@ export default function App() {
   const showCanvas = !isDashboard;
   const showSidebar = !isDashboard;
 
-  // ── Overlay views (Drafting / CNC) triggered from final-inspect ────────
-  const [overlayView, setOverlayView] = useState<'drafting' | 'cnc' | null>(null);
+  // ── Overlay views (Drafting / CNC / Viewer) triggered from final-inspect or Dashboard ────────
+  const [overlayView, setOverlayView] = useState<'drafting' | 'cnc' | 'viewer' | null>(null);
 
   return (
     <>
@@ -175,6 +177,7 @@ export default function App() {
                   }}
                   onLoadConfig={() => setWizardStep('tube-design')}
                   hasSavedConfig={hasSavedConfig}
+                  onOpenViewer={() => setOverlayView('viewer')}
                 />
               )}
 
@@ -185,6 +188,7 @@ export default function App() {
                     config={state.zeroGap}
                     gridVisible={state.gridVisible}
                     wizardStep={state.wizardStep}
+                    onDimensionsChange={setTargetDimensions}
                   />
                 </ErrorBoundary>
               )}
@@ -209,11 +213,16 @@ export default function App() {
                 </div>
               )}
 
+              {overlayView === 'viewer' && (
+                <FileViewer onClose={() => setOverlayView(null)} />
+              )}
+
               {/* View HUD (only in non-dashboard) */}
               {showCanvas && (
                 <div className="absolute top-4 left-4 flex gap-2 z-10">
                   <div className="bg-zinc-950/80 backdrop-blur px-2 py-1 rounded border border-zinc-700 text-[10px] font-mono text-zinc-400">Perspective</div>
                   <div className="bg-zinc-950/80 backdrop-blur px-2 py-1 rounded border border-zinc-700 text-[10px] font-mono text-zinc-400">Shaded with Edges</div>
+                  <button onClick={() => setState(prev => ({...prev, gridVisible: !prev.gridVisible}))} className={`backdrop-blur px-2 py-1 rounded border border-zinc-700 text-[10px] font-mono transition-colors ${state.gridVisible ? 'bg-zinc-800 text-zinc-200' : 'bg-zinc-950/80 text-zinc-500'}`}>{state.gridVisible ? 'إخفاء الشبكة' : 'إظهار الشبكة'}</button>
                 </div>
               )}
             </div>
@@ -229,6 +238,11 @@ export default function App() {
                   <span>السمك: {state.zeroGap.tube.thickness}mm</span>
                   <span>الزاوية: {state.zeroGap.assembly.tiltAngle}°</span>
                 </>
+              )}
+              {state.wizardStep === 'final-inspect' && targetDimensions && (
+                <span className="text-yellow-400/90 font-bold ml-2 border border-yellow-500/30 bg-yellow-500/10 px-2 py-0.5 rounded">
+                  مادة خام: {targetDimensions.l.toFixed(1)}L × {targetDimensions.w.toFixed(1)}W × {targetDimensions.h.toFixed(1)}H mm
+                </span>
               )}
               <div className="ml-auto flex gap-4 text-emerald-500/70">
                 <span>ZERO-GAP ACTIVE</span>

@@ -16,13 +16,14 @@ interface ThreeCanvasProps {
   config: ZeroGapState;
   gridVisible: boolean;
   wizardStep: WizardStep;
+  onDimensionsChange?: (dimensions: {l: number, w: number, h: number} | null) => void;
 }
 
 export interface ThreeCanvasRef {
   exportSTL: () => Promise<string | null>;
 }
 
-const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, gridVisible, wizardStep }, ref) => {
+const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, gridVisible, wizardStep, onDimensionsChange }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -610,7 +611,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         // Handle at End B
         if (handleMeshObj) {
           const hCfg2 = config.handle;
-          handleMeshObj.position.set(hCfg2.offsetZ || 0, 0, tl / 2 + (hCfg2.insertionDepth || 0));
+          handleMeshObj.position.set(hCfg2.offsetZ || 0, 0, -tl / 2 + (hCfg2.insertionDepth || 0));
           handleMeshObj.rotation.x = (hCfg2.angleX || 0) * (Math.PI / 180);
           handleMeshObj.rotation.y = (hCfg2.angleY || 0) * (Math.PI / 180);
           
@@ -635,31 +636,6 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
              mesh.getWorldScale(brush.scale);
              brush.updateMatrixWorld(true);
              return brush;
-        };
-
-        const filterTubeEdges = (geom: THREE.BufferGeometry, thresholdDot: number = 0.99) => {
-          if (!geom.attributes.position) return geom;
-          const positions = geom.attributes.position.array;
-          const filtered = [];
-          
-          const v1 = new THREE.Vector3();
-          const v2 = new THREE.Vector3();
-          const edgeDir = new THREE.Vector3();
-          const tubeDir = new THREE.Vector3(0, 0, 1);
-
-          for (let i = 0; i < positions.length; i += 6) {
-            v1.set(positions[i], positions[i+1], positions[i+2]);
-            v2.set(positions[i+3], positions[i+4], positions[i+5]);
-            edgeDir.subVectors(v2, v1).normalize();
-            
-            if (Math.abs(edgeDir.dot(tubeDir)) < thresholdDot) {
-              filtered.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
-            }
-          }
-
-          const filteredGeom = new THREE.BufferGeometry();
-          filteredGeom.setAttribute('position', new THREE.Float32BufferAttribute(filtered, 3));
-          return filteredGeom;
         };
 
         if (config.renderMode === 'preview') {
@@ -712,22 +688,67 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
           finalResultMesh.rotation.set(0, 0, 0);
           finalResultMesh.scale.set(1, 1, 1);
           finalResultMesh.updateMatrixWorld(true);
-
-          if (config.showBorders) {
-            try {
-              const edges = new THREE.EdgesGeometry(finalResultMesh.geometry);
-              if (edges.attributes.position?.count > 0) {
-                finalResultMesh.add(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x333333, opacity: 0.2, transparent: true })));
-              }
-            } catch { /* edge gen failed */ }
-          }
+          
+          // Global edges logic removed, managed explicitly in saddle and toolpath boundaries
 
           scene.add(finalResultMesh);
           exportMeshRef.current = finalResultMesh;
         }
 
+        // Function to filter out tube cap edges, parallel edges, and inner thickness edges, keeping only outer intersection curves
+        const filterCutPathEdges = (edgesGeom: THREE.EdgesGeometry, tubeMatrix: THREE.Matrix4, tubeLength: number, w: number, h: number, isRound: boolean) => {
+          if (!edgesGeom.attributes.position) return edgesGeom;
+          const positions = edgesGeom.attributes.position.array;
+          const filtered = [];
+          const invMat = tubeMatrix.clone().invert();
+          const v1 = new THREE.Vector3();
+          const v2 = new THREE.Vector3();
+          
+          const isPointOnOuterSurface = (p: THREE.Vector3) => {
+             if (isRound) {
+                 const r = Math.sqrt(p.x * p.x + p.y * p.y);
+                 return Math.abs(r - w/2) < 1.0;
+             } else {
+                 const onX = Math.abs(Math.abs(p.x) - w/2) < 1.0;
+                 const onY = Math.abs(Math.abs(p.y) - h/2) < 1.0;
+                 // It must be ON the boundary box. So either x is at w/2 and y is within h/2, etc.
+                 const withinX = Math.abs(p.x) <= w/2 + 1.0;
+                 const withinY = Math.abs(p.y) <= h/2 + 1.0;
+                 return (onX && withinY) || (onY && withinX);
+             }
+          };
+
+          for (let i = 0; i < positions.length; i += 6) {
+            v1.set(positions[i], positions[i+1], positions[i+2]);
+            v2.set(positions[i+3], positions[i+4], positions[i+5]);
+            
+            v1.applyMatrix4(invMat);
+            v2.applyMatrix4(invMat);
+            
+            const eps = 0.5; // Epsilon for cap boundaries
+            const isStartCap = Math.abs(v1.z) < eps && Math.abs(v2.z) < eps;
+            const isEndCap = Math.abs(v1.z - tubeLength) < eps && Math.abs(v2.z - tubeLength) < eps;
+            
+            const edgeDir = v2.clone().sub(v1).normalize();
+            const isParallel = Math.abs(edgeDir.z) > 0.98;
+            
+            if (!isStartCap && !isEndCap && !isParallel) {
+               // Only keep edges that lie entirely on the outer surface of the tube.
+               // (This discards inner thickness edges or box corners inside the tube)
+               if (isPointOnOuterSurface(v1) && isPointOnOuterSurface(v2)) {
+                 v1.applyMatrix4(tubeMatrix);
+                 v2.applyMatrix4(tubeMatrix);
+                 filtered.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
+               }
+            }
+          }
+          const filteredGeom = new THREE.BufferGeometry();
+          filteredGeom.setAttribute('position', new THREE.Float32BufferAttribute(filtered, 3));
+          return filteredGeom;
+        };
+
         // Add explicit saddle contact rings (Red Borders) for ALL render modes
-        if (config.showBorders && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut')) {
+        if ((config.showBorders || config.renderMode === 'boolean' || config.showToolpathPreview) && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut')) {
           const ev = new Evaluator();
           const tBrush = getBrush(tubeMesh, tubeGeom);
 
@@ -736,19 +757,77 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
               const pGeomToCut = config.pan.applyThicknessToCut && panInnerGeom ? panInnerGeom : panGeom;
               const pBrush = getBrush(panMesh, pGeomToCut);
               const contact = ev.evaluate(tBrush, pBrush, INTERSECTION);
+
+              const outerBrush = getBrush(panMesh, panGeom);
+              const contactForEdges = ev.evaluate(tBrush, outerBrush, INTERSECTION);
+
               if (contact && contact.geometry.attributes.position?.count > 0) {
-                const edges = new THREE.EdgesGeometry(contact.geometry, 5);
-                const filteredEdgesGeom = filterTubeEdges(edges);
-                const saddle = new THREE.LineSegments(filteredEdgesGeom, new THREE.LineBasicMaterial({ color: 0x0088ff, linewidth: 2 }));
-                saddle.name = 'zerogap_pan_ring'; saddle.renderOrder = 2;
-                
-                if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
-                   saddle.geometry.translate(shiftX, shiftY, shiftZ);
-                   finalResultMesh.add(saddle);
-                } else {
-                   saddle.position.copy(tubeMesh.position);
-                   saddle.quaternion.copy(tubeMesh.quaternion);
-                   scene.add(saddle);
+                // Determine boundaries for the straight cut
+                const localContact = contact.geometry.clone();
+                localContact.applyMatrix4(tubeMesh.matrixWorld.clone().invert());
+                localContact.computeBoundingBox();
+                const panBoundZ = localContact.boundingBox?.max.z || 0; // Max penetration
+
+                let ghostMesh: THREE.Mesh | null = null;
+                if (config.renderMode === 'boolean') {
+                  console.log('Creating ghostMesh');
+                  const ghostMat = new THREE.MeshStandardMaterial({
+                    color: 0x00bfff, emissive: 0x0044aa, transparent: true, opacity: 0.3,
+                    depthWrite: false, side: THREE.DoubleSide
+                  });
+                  ghostMesh = new THREE.Mesh(contact.geometry, ghostMat);
+                  ghostMesh.name = 'zerogap_pan_ghost';
+                }
+
+                if (config.showBorders || config.showToolpathPreview) {
+                   const edges = new THREE.EdgesGeometry(contactForEdges.geometry, 30);
+                   const filteredEdges = filterCutPathEdges(edges, tubeMesh.matrixWorld, config.tube.partLength, config.tube.width, config.tube.height || config.tube.width, config.tube.shape === 'دائري');
+                   
+                   const saddle = new THREE.LineSegments(filteredEdges, new THREE.LineBasicMaterial({ 
+                     color: 0x00ffff, linewidth: 2, depthTest: false, transparent: true, opacity: 0.9
+                   }));
+                   saddle.name = 'zerogap_pan_ring';
+
+                   if (ghostMesh) ghostMesh.add(saddle);
+                   else {
+                     if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
+                        saddle.geometry.translate(shiftX, shiftY, shiftZ);
+                        finalResultMesh.add(saddle);
+                     } else {
+                        scene.add(saddle);
+                     }
+                   }
+                }
+
+                if (config.showToolpathPreview && wizardStep === 'final-inspect') {
+                   const ringGeom = new THREE.BufferGeometry();
+                   const pts = [];
+                   const r = config.tube.diameter / 2 + 0.1;
+                   for(let i=0; i<=64; i++){
+                      const a = (i/64)*Math.PI*2;
+                      pts.push(Math.cos(a)*r, Math.sin(a)*r, panBoundZ);
+                   }
+                   ringGeom.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+                   const ringLine = new THREE.Line(ringGeom, new THREE.LineBasicMaterial({ color: 0xffaa00, linewidth: 2, depthTest: false }));
+                   ringLine.renderOrder = 999;
+                   
+                   if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
+                      const ringClone = ringLine.clone();
+                      ringClone.applyMatrix4(tubeMesh.matrixWorld);
+                      ringClone.geometry.translate(shiftX, shiftY, shiftZ);
+                      finalResultMesh.add(ringClone);
+                   } else {
+                      tubeMesh.add(ringLine);
+                   }
+                }
+
+                if (ghostMesh) {
+                  if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
+                     ghostMesh.geometry.translate(shiftX, shiftY, shiftZ);
+                     finalResultMesh.add(ghostMesh);
+                  } else {
+                     scene.add(ghostMesh);
+                  }
                 }
               }
             } catch(e) {}
@@ -759,17 +838,71 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
               const hBrush = getBrush(handleMeshObj, handleGeom);
               const contact = ev.evaluate(tBrush, hBrush, INTERSECTION);
               if (contact && contact.geometry.attributes.position?.count > 0) {
-                const edges = new THREE.EdgesGeometry(contact.geometry, 10);
-                const filteredEdgesGeom = filterTubeEdges(edges);
-                const saddle = new THREE.LineSegments(filteredEdgesGeom, new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 }));
-                saddle.name = 'zerogap_handle_ring'; saddle.renderOrder = 2;
-                if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
-                   saddle.geometry.translate(shiftX, shiftY, shiftZ);
-                   finalResultMesh.add(saddle);
-                } else {
-                   saddle.position.copy(tubeMesh.position);
-                   saddle.quaternion.copy(tubeMesh.quaternion);
-                   scene.add(saddle);
+                // Determine boundaries for the straight cut
+                const localContact = contact.geometry.clone();
+                localContact.applyMatrix4(tubeMesh.matrixWorld.clone().invert());
+                localContact.computeBoundingBox();
+                const handleBoundZ = localContact.boundingBox?.min.z || config.tube.partLength;
+
+                let ghostMesh: THREE.Mesh | null = null;
+                if (config.renderMode === 'boolean') {
+                  const ghostMat = new THREE.MeshStandardMaterial({
+                    color: 0x00ff00, emissive: 0x004400, transparent: true, opacity: 0.3,
+                    depthWrite: false, side: THREE.DoubleSide
+                  });
+                  ghostMesh = new THREE.Mesh(contact.geometry, ghostMat);
+                  ghostMesh.name = 'zerogap_handle_ghost';
+                }
+
+                if (config.showBorders || config.showToolpathPreview) {
+                   const edges = new THREE.EdgesGeometry(contact.geometry, 30);
+                   const filteredEdges = filterCutPathEdges(edges, tubeMesh.matrixWorld, config.tube.partLength, config.tube.width, config.tube.height || config.tube.width, config.tube.shape === 'دائري');
+                   
+                   const saddle = new THREE.LineSegments(filteredEdges, new THREE.LineBasicMaterial({ 
+                     color: 0x00ffff, linewidth: 2, depthTest: false, transparent: true, opacity: 0.9
+                   }));
+                   saddle.name = 'zerogap_handle_ring';
+
+                   if (ghostMesh) ghostMesh.add(saddle);
+                   else {
+                     if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
+                        saddle.geometry.translate(shiftX, shiftY, shiftZ);
+                        finalResultMesh.add(saddle);
+                     } else {
+                        scene.add(saddle);
+                     }
+                   }
+                }
+
+                if (config.showToolpathPreview && wizardStep === 'final-inspect') {
+                   const ringGeom = new THREE.BufferGeometry();
+                   const pts = [];
+                   const r = config.tube.diameter / 2 + 0.1;
+                   for(let i=0; i<=64; i++){
+                      const a = (i/64)*Math.PI*2;
+                      pts.push(Math.cos(a)*r, Math.sin(a)*r, handleBoundZ);
+                   }
+                   ringGeom.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+                   const ringLine = new THREE.Line(ringGeom, new THREE.LineBasicMaterial({ color: 0xffaa00, linewidth: 2, depthTest: false }));
+                   ringLine.renderOrder = 999;
+                   
+                   if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
+                      const ringClone = ringLine.clone();
+                      ringClone.applyMatrix4(tubeMesh.matrixWorld);
+                      ringClone.geometry.translate(shiftX, shiftY, shiftZ);
+                      finalResultMesh.add(ringClone);
+                   } else {
+                      tubeMesh.add(ringLine);
+                   }
+                }
+
+                if (ghostMesh) {
+                  if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
+                     ghostMesh.geometry.translate(shiftX, shiftY, shiftZ);
+                     finalResultMesh.add(ghostMesh);
+                  } else {
+                     scene.add(ghostMesh);
+                  }
                 }
               }
             } catch(e) {}
@@ -796,6 +929,11 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
           }
 
           if (isFinite(bb.min.x) && !isNaN(bb.min.x)) {
+            if (onDimensionsChange) {
+               const size = new THREE.Vector3();
+               bb.getSize(size);
+               onDimensionsChange({l: size.z, w: size.x, h: size.y}); // Assuming Z is length, X is width, Y is height
+            }
             if (!hasAutoCentered.current || lastStlName.current !== config.tube.customStlName) {
               const worldCenter = new THREE.Vector3();
               bb.getCenter(worldCenter);
