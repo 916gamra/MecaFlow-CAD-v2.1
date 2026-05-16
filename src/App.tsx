@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import ThreeCanvas from './components/ThreeCanvas';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import DraftingView from './components/DraftingView';
@@ -7,71 +7,85 @@ import ZeroGapControlPanel from './components/ZeroGapControlPanel';
 import WizardStepper from './components/WizardStepper';
 import DashboardView from './components/DashboardView';
 import { CADState, WizardStep, WIZARD_STEPS } from './types';
-import { loadConfigFromStorage, saveConfigToStorage } from './lib/storageUtils';
+import { StorageBridge } from './lib/storageBridge';
 import { useProjectHistory } from './hooks/useProjectHistory';
+
+const defaultZeroGap: CADState['zeroGap'] = {
+  pan: {
+    bottomDiameter: 120, topDiameter: 280, height: 50, curveRadius: 100,
+    rimThickness: 2, bottomFilletRadius: 8, removeBottom: false, addRim: true,
+    rimHeight: 3, wallThickness: 2.0, useShellPreview: true,
+    innerMoldMode: false, applyThicknessToCut: false,
+  },
+  tube: {
+    width: 38, height: 25, thickness: 1.2, totalLength: 120, partLength: 70,
+    cornerRadius: 5.75, shape: 'بيضاوي',
+  },
+  handle: {
+    shape: 'rectangular', width: 30, height: 20, depth: 80, thickness: 1.5,
+    cornerRadius: 3, angleX: 0, angleY: 0, offsetZ: 0, insertionDepth: 15,
+  },
+  assembly: {
+    tiltAngle: 15, handleAngleX: 0, handleAngleY: 10, handleOffset: 0,
+    insertionDistance: 50, heightOffset: 25, tiltAxis: 'X',
+  },
+  renderMode: 'boolean',
+  addFillet: true,
+  thermalClearance: false,
+  markOrientation: false,
+  showGlow: true,
+  showBorders: true,
+};
+
+const defaultInitialState: CADState = {
+  parts: [],
+  selectedPartId: null,
+  viewMode: '3d',
+  gridVisible: true,
+  units: 'mm',
+  zeroGap: defaultZeroGap,
+  wizardStep: 'dashboard',
+};
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
+  const [hasSavedConfig, setHasSavedConfig] = useState(false);
+  const [dbLoaded, setDbLoaded] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowSplash(false), 2000);
     return () => clearTimeout(timer);
   }, []);
 
-  const defaultZeroGap: CADState['zeroGap'] = {
-    pan: {
-      bottomDiameter: 120, topDiameter: 280, height: 50, curveRadius: 100,
-      rimThickness: 2, bottomFilletRadius: 8, removeBottom: false, addRim: true,
-      rimHeight: 3, wallThickness: 2.0, useShellPreview: true,
-      innerMoldMode: false, applyThicknessToCut: false,
-    },
-    tube: {
-      width: 38, height: 25, thickness: 1.2, totalLength: 120, partLength: 70,
-      cornerRadius: 5.75, shape: 'بيضاوي',
-    },
-    handle: {
-      shape: 'rectangular', width: 30, height: 20, depth: 80, thickness: 1.5,
-      cornerRadius: 3, angleX: 0, angleY: 0, offsetZ: 0, insertionDepth: 15,
-    },
-    assembly: {
-      tiltAngle: 15, handleAngleX: 0, handleAngleY: 10, handleOffset: 0,
-      insertionDistance: 50, heightOffset: 25, tiltAxis: 'X',
-    },
-    renderMode: 'boolean',
-    addFillet: true,
-    thermalClearance: false,
-    markOrientation: false,
-    showGlow: true,
-    showBorders: true,
-  };
+  const [defaultProjectId, setDefaultProjectId] = useState<string | undefined>();
+  const { currentGeometry, updateGeometry, undo, redo, exportManufacturingFile, isLoading, canUndo, canRedo } = useProjectHistory(defaultProjectId);
+  
+  useEffect(() => {
+    StorageBridge.getLatestProject().then(project => {
+       if (project && project.id) {
+         setHasSavedConfig(true);
+         setDefaultProjectId(project.id);
+       }
+       setDbLoaded(true);
+    }).catch(err => {
+      console.error('Failed to load project from Dexie:', err);
+      setDbLoaded(true);
+    });
+  }, []);
 
-  const initialState: CADState = (() => {
-    const savedConfig = loadConfigFromStorage();
-    // Migrate old configs that lack handle
-    const zeroGap = savedConfig
-      ? { ...defaultZeroGap, ...savedConfig, handle: savedConfig.handle || defaultZeroGap.handle }
-      : defaultZeroGap;
+  const state: CADState = useMemo(() => {
+    if (!currentGeometry) return defaultInitialState;
+    if (currentGeometry.zeroGap) return currentGeometry;
     return {
-      parts: [],
-      selectedPartId: null,
-      viewMode: '3d',
-      gridVisible: true,
-      units: 'mm',
-      zeroGap,
-      wizardStep: 'dashboard',
+      ...defaultInitialState,
+      zeroGap: { ...defaultZeroGap, ...currentGeometry }
     };
-  })();
-
-  const { state, push, undo, redo } = useProjectHistory(initialState);
+  }, [currentGeometry]);
   
   // Wrapper to update state
   const setState = (updater: (prev: CADState) => CADState) => {
-    push(updater(state));
+    updateGeometry(updater(state));
   };
-
-  useEffect(() => {
-    saveConfigToStorage(state.zeroGap);
-  }, [state.zeroGap]);
 
   const canvasRef = useRef<{ exportSTL: () => void }>(null);
 
@@ -160,7 +174,7 @@ export default function App() {
                     }));
                   }}
                   onLoadConfig={() => setWizardStep('tube-design')}
-                  hasSavedConfig={!!loadConfigFromStorage()}
+                  hasSavedConfig={hasSavedConfig}
                 />
               )}
 
@@ -191,7 +205,7 @@ export default function App() {
                     className="absolute top-4 left-4 z-60 px-3 py-1 bg-red-600 text-white rounded text-xs font-bold"
                     onClick={() => setOverlayView(null)}
                   >✕ إغلاق</button>
-                  <CNCView config={state.zeroGap} />
+                  <CNCView config={state.zeroGap} exportManufacturingFile={exportManufacturingFile} />
                 </div>
               )}
 
@@ -228,7 +242,11 @@ export default function App() {
               <ZeroGapControlPanel
                 config={state.zeroGap}
                 onUpdate={(newConfig) => setState(prev => ({ ...prev, zeroGap: newConfig }))}
-                onExport={() => canvasRef.current?.exportSTL()}
+                onExport={async () => {
+                  const stl = await canvasRef.current?.exportSTL();
+                  if (stl) await exportManufacturingFile(stl, 'stl');
+                }}
+                exportManufacturingFile={exportManufacturingFile}
                 wizardStep={state.wizardStep}
                 onNext={goNext}
                 onPrev={goPrev}

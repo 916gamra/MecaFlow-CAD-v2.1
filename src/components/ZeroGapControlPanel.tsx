@@ -5,11 +5,13 @@ import { generateGcode } from '../lib/gcodeGenerator';
 import { useProfiles } from '../hooks/useProfiles';
 import { SavedProfile } from '../lib/profileStorage';
 import { ProfileDetails } from './ProfileDetails';
+import { StorageBridge } from '../lib/storageBridge';
 
 interface ControlPanelProps {
   config: ZeroGapState;
   onUpdate: (config: ZeroGapState) => void;
   onExport: () => void;
+  exportManufacturingFile: (content: string | Uint8Array, extension: 'gcode' | 'stl' | 'py' | 'nc') => void;
   wizardStep: WizardStep;
   onNext: () => void;
   onPrev: () => void;
@@ -65,7 +67,7 @@ const PrecisionControl = ({
 };
 
 const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
-  config, onUpdate, onExport, wizardStep, onNext, onPrev, canGoNext, canGoPrev,
+  config, onUpdate, onExport, exportManufacturingFile, wizardStep, onNext, onPrev, canGoNext, canGoPrev,
   onOpenDrafting, onOpenCNC, onUndo, onRedo,
 }) => {
   const { profiles, addProfile, deleteProfile } = useProfiles();
@@ -233,11 +235,9 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
             }}/>
           </label>
             <button
-            onClick={() => {
-              const data = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(config, null, 2));
-              const a = document.createElement('a');
-              a.href = data; a.download = 'mecaflow_config.json';
-              document.body.appendChild(a); a.click(); a.remove();
+            onClick={async () => {
+              const data = JSON.stringify(config, null, 2);
+              await StorageBridge.exportNativeFile(data, 'mecaflow_config.json');
             }}
             className="px-2 py-1 bg-black/40 border border-[var(--border)] rounded text-[9px] text-[var(--accent)] hover:border-[var(--accent)] transition-colors"
           >حفظ</button>
@@ -512,10 +512,7 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
                 onClick={() => {
                   try {
                     const s = generateCadQueryScript(config);
-                    const blob = new Blob([s], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a'); a.href = url; a.download = `ZeroGap_Pipeline_${Date.now()}.py`;
-                    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+                    exportManufacturingFile(s, 'py');
                   } catch (err) { alert('فشل: ' + (err instanceof Error ? err.message : '')); }
                 }}
                 className="w-full py-2 mb-2 bg-blue-600 hover:bg-blue-500 transition-colors text-white font-bold text-[11px] uppercase tracking-widest rounded border border-blue-500"
@@ -525,10 +522,7 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
                   try {
                     const r = generateGcode(config);
                     if (r.error) { alert(r.error); return; }
-                    const blob = new Blob([r.gcode], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a'); a.href = url; a.download = `MecaFlow_Cut_${Date.now()}.nc`;
-                    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+                    exportManufacturingFile(r.gcode, 'nc');
                   } catch (err) { alert('فشل: ' + (err instanceof Error ? err.message : '')); }
                 }}
                 className="w-full py-2 bg-green-600 hover:bg-green-500 transition-colors text-white font-bold text-[11px] uppercase tracking-widest rounded border border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]"

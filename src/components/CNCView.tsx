@@ -4,9 +4,10 @@ import { generateGcode } from '../lib/gcodeGenerator';
 
 interface CNCViewProps {
   config: ZeroGapState;
+  exportManufacturingFile: (content: string | Uint8Array, extension: 'gcode' | 'stl' | 'py' | 'nc') => void;
 }
 
-const CNCView: React.FC<CNCViewProps> = ({ config }) => {
+const CNCView: React.FC<CNCViewProps> = ({ config, exportManufacturingFile }) => {
   const gcodeResult = useMemo(() => generateGcode(config), [config]);
   const hasError = !!gcodeResult.error;
   const gcodeLines = hasError ? [] : gcodeResult.gcode.split('\n');
@@ -23,15 +24,7 @@ const CNCView: React.FC<CNCViewProps> = ({ config }) => {
       alert(gcodeResult.error);
       return;
     }
-    const blob = new Blob([gcodeResult.gcode], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `MecaFlow_CNC_${Date.now()}.nc`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    exportManufacturingFile(gcodeResult.gcode, 'nc');
   };
 
   return (

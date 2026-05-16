@@ -4,6 +4,7 @@ import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js'
 import { OrbitControls, STLExporter, STLLoader } from 'three-stdlib';
 import { Brush, Evaluator, SUBTRACTION, INTERSECTION, ADDITION } from 'three-bvh-csg';
 import { ZeroGapState, WizardStep } from '../types';
+import { StorageBridge } from '../lib/storageBridge';
 import { validateTubeConfig, validatePanConfig } from '../lib/validators';
 import { performanceOptimizer } from '../lib/performanceOptimizer';
 import { ViewportGizmo } from './ViewportGizmo';
@@ -18,7 +19,7 @@ interface ThreeCanvasProps {
 }
 
 export interface ThreeCanvasRef {
-  exportSTL: () => void;
+  exportSTL: () => Promise<string | null>;
 }
 
 const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, gridVisible, wizardStep }, ref) => {
@@ -37,23 +38,34 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
 
   // ─── STL Export ──────────────────────────────────────────────────────────────
   useImperativeHandle(ref, () => ({
-    exportSTL: () => {
-      if (!exportMeshRef.current) return;
+    exportSTL: async () => {
+      if (!exportMeshRef.current) return null;
       const exporter = new STLExporter();
       
       const stlString = exporter.parse(exportMeshRef.current);
-      
-      const blob = new Blob([stlString], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'zero_gap_laser_export.stl';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      return stlString;
     }
   }));
+
+  // ─── Geometry Worker Initialization ──────────────────────────────────────────
+  const workerRef = useRef<Worker | null>(null);
+
+  useEffect(() => {
+    // تجهيز الـ Worker لمعالجة الحسابات المعقدة في مسار موازي (Background)
+    workerRef.current = new Worker(new URL('../workers/geometry.worker.ts', import.meta.url));
+    workerRef.current.onmessage = (e) => {
+      const { status, data, message } = e.data;
+      if (status === 'COMPLETE') {
+        console.log('[Worker] تمت المعالجة بنجاح:', data);
+        // في المستقبل، سيتم هنا استقبال الإحداثيات والـ Buffers المحدثة لرسمها فوراً
+      } else if (status === 'ERROR') {
+        console.error('[Worker] خطأ هندسي:', message);
+      }
+    };
+    return () => {
+      workerRef.current?.terminate();
+    };
+  }, []);
 
   // ─── Scene Initialization (runs once) ────────────────────────────────────────
   useEffect(() => {
@@ -218,6 +230,14 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
       try {
         if (needsTube) validateTubeConfig(config.tube);
         if (needsPan)  validatePanConfig(config.pan);
+
+        // إرسال البيانات للمعالجة في مسار فرعي لتجنب تجميد الشاشة
+        if (workerRef.current) {
+          workerRef.current.postMessage({
+            action: 'COMPUTE_GEOMETRY',
+            payload: { tube: config.tube, pan: config.pan, handle: config.handle, assembly: config.assembly }
+          });
+        }
       } catch (err: any) {
         console.warn('Validation:', err.message);
         return;
