@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import ThreeCanvas from './components/ThreeCanvas';
+import * as THREE from 'three';
+import ThreeCanvas, { ThreeCanvasRef } from './components/ThreeCanvas';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import DraftingView from './components/DraftingView';
 import CNCView from './components/CNCView';
@@ -90,7 +91,7 @@ export default function App() {
     updateGeometry(updater(state));
   };
 
-  const canvasRef = useRef<{ exportSTL: () => void }>(null);
+  const canvasRef = useRef<ThreeCanvasRef>(null);
 
   // ── Wizard navigation ─────────────────────────────────────────────────────
   const setWizardStep = (step: WizardStep) => {
@@ -98,7 +99,7 @@ export default function App() {
       let newRenderMode = prev.zeroGap.renderMode;
       if (step === 'pan-tube-cut' || step === 'tube-handle-cut') {
         newRenderMode = 'preview';
-      } else if (step === 'final-inspect') {
+      } else if (step === 'technical-review' || step === 'final-inspect') {
         newRenderMode = 'boolean';
       }
       return { 

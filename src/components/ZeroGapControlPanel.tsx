@@ -493,16 +493,21 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
             </div>
 
             <section className="mb-6 border-b border-[var(--border)] pb-4">
-              <label className="block text-[10px] font-bold text-[var(--accent)] uppercase mb-3 text-right">إعدادات القياس</label>
-              <div className="p-3 bg-black/20 border border-zinc-800 rounded text-[10px] text-zinc-400 text-right">
-                سيتم إضافة أدوات القياس الفنية هنا للتحكم في أبعاد القطعة بشكل أدق.
-              </div>
+              <label className="block text-[10px] font-bold text-[var(--accent)] uppercase mb-3 text-right">ضبط دقيق للطرف A (المقلاة)</label>
+              {renderSlider('زاوية الميل', config.assembly.tiltAngle, v => updateAssembly('tiltAngle', v), -90, 90)}
+              {renderSlider('الارتفاع من القاع', config.assembly.heightOffset, v => updateAssembly('heightOffset', v), 0, 150)}
+            </section>
+
+            <section className="mb-6 border-b border-[var(--border)] pb-4">
+              <label className="block text-[10px] font-bold text-emerald-400 uppercase mb-3 text-right">ضبط دقيق للطرف B (المقبض)</label>
+              {renderSlider('زاوية الميل', config.handle.angleX, v => updateHandle('angleX', v), -45, 45)}
+              {renderSlider('عمق الاختراق', config.handle.insertionDepth, v => updateHandle('insertionDepth', v), 0, 50)}
             </section>
 
             {/* Visual Checks for this stage */}
             <section className="mb-4">
               <label className="block text-[10px] font-bold text-[var(--text-dim)] uppercase mb-3 text-right">المعايير البصرية</label>
-              {renderToggle('إظهار مسار القطع', !!config.showToolpathPreview,
+              {renderToggle('عرض مسار القطع (Laser Dot)', !!config.showToolpathPreview,
                 () => onUpdate({ ...config, showToolpathPreview: !config.showToolpathPreview }),
                 '#00ffff')}
               {renderToggle('إظهار خيال الأطراف', !!config.showGhostPart,

@@ -34,6 +34,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
   const exportMeshRef = useRef<THREE.Object3D | null>(null);
   const hasAutoCentered = useRef<boolean>(false);
   const lastStlName = useRef<string | undefined>(config.tube.customStlName);
+  const lastStep = useRef<WizardStep>(wizardStep);
   const [webglError, setWebglError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [engineError, setEngineError] = useState<string | null>(null);
@@ -158,11 +159,12 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
     scene.add(new THREE.AxesHelper(100));
 
     // Animation loop
-    const clock = new THREE.Clock();
+    const timer = new (THREE as any).Timer();
     let animId: number;
-    const animate = () => {
+    const animate = (timestamp: number) => {
       animId = requestAnimationFrame(animate);
-      const time = clock.getElapsedTime() * 3;
+      timer.update(timestamp);
+      const time = timer.getElapsed() * 3;
 
       // Pulsing glow for green penetration zone
       const glowObj = scene.getObjectByName('zerogap_intersection_zone');
@@ -179,11 +181,34 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         mat.opacity = 0.8 + Math.sin(time * 1.5) * 0.15;
       }
 
+      // Laser point animation
+      const laserPoint = scene.getObjectByName('zerogap_laser_dot');
+      if (laserPoint && laserPoint.userData.points && laserPoint.userData.points.length > 0) {
+        const pts = laserPoint.userData.points;
+        const speed = 0.5;
+        const index = Math.floor((timestamp * speed) % pts.length);
+        const p = pts[index];
+        
+        if (laserPoint.userData.isInWorldSpace && laserPoint.userData.parentMatrix) {
+          const worldPos = p.clone().applyMatrix4(laserPoint.userData.parentMatrix);
+          laserPoint.position.copy(worldPos);
+        } else {
+          laserPoint.position.set(p.x, p.y, p.z);
+        }
+        
+        // Add a small trail or light effect
+        const laserLight = scene.getObjectByName('zerogap_laser_light') as THREE.PointLight;
+        if (laserLight) {
+          laserLight.position.copy(laserPoint.position);
+          laserLight.intensity = 2.0 + Math.sin(time * 5) * 1.0;
+        }
+      }
+
       controls.update();
       renderer!.render(scene, camera);
       performanceOptimizer.measureFPS();
     };
-    animate();
+    requestAnimationFrame(animate);
 
     // Resize observer
     const resizeObs = new ResizeObserver(entries => {
@@ -224,11 +249,13 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
       const scene = sceneRef.current; // Re-read inside timeout for safety
       if (!scene) return;
 
+      // Early exit for final inspection or technical review (removed for live interaction in Step 6/7)
+      
       // ── Validate inputs ──────────────────────────────────────────────────────
       const needsTube = wizardStep !== 'pan-design' && wizardStep !== 'handle-design';
-      const needsPan  = wizardStep === 'pan-design' || wizardStep === 'pan-tube-cut' || wizardStep === 'tube-handle-cut' || wizardStep === 'final-inspect';
-      const needsHandle = wizardStep === 'handle-design' || wizardStep === 'tube-handle-cut' || wizardStep === 'final-inspect';
-      const needsCSG = wizardStep === 'pan-tube-cut' || wizardStep === 'tube-handle-cut' || wizardStep === 'final-inspect';
+      const needsPan  = wizardStep === 'pan-design' || wizardStep === 'pan-tube-cut' || wizardStep === 'tube-handle-cut' || wizardStep === 'technical-review' || wizardStep === 'final-inspect';
+      const needsHandle = wizardStep === 'handle-design' || wizardStep === 'tube-handle-cut' || wizardStep === 'technical-review' || wizardStep === 'final-inspect';
+      const needsCSG = wizardStep === 'pan-tube-cut' || wizardStep === 'tube-handle-cut' || wizardStep === 'technical-review' || wizardStep === 'final-inspect';
 
       try {
         if (needsTube) validateTubeConfig(config.tube);
@@ -654,7 +681,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         } else {
           // Boolean Mode (Zero Cut)
           if (wizardStep === 'final-inspect' && finalPartFromHandle) {
-            finalResultMesh = finalPartFromHandle.clone();
+            finalResultMesh = finalPartFromHandle.clone() as any;
             finalResultMesh.name = 'zerogap_result';
             finalResultMesh.position.set(0, 0, 0);
             scene.add(finalResultMesh);
@@ -689,21 +716,44 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
           finalResultMesh = new THREE.Mesh(resultBrush.geometry, resultMat);
           finalResultMesh.name = 'zerogap_result';
 
-          if (wizardStep === 'tube-handle-cut' && onResultComputed) {
-            onResultComputed(finalResultMesh.clone());
-          }
-
-          // Maintain centered position in the canvas at 0,0,0
-          finalResultMesh.position.set(0, 0, 0);
-          finalResultMesh.rotation.set(0, 0, 0);
-          finalResultMesh.scale.set(1, 1, 1);
+          // Center the final result
+          const box = new THREE.Box3().setFromObject(finalResultMesh);
+          const center = new THREE.Vector3();
+          box.getCenter(center);
+          finalResultMesh.position.sub(center);
           finalResultMesh.updateMatrixWorld(true);
-          
-          // Global edges logic removed, managed explicitly in saddle and toolpath boundaries
+
+          if ((wizardStep === 'tube-handle-cut' || wizardStep === 'technical-review') && onResultComputed) {
+            onResultComputed(finalResultMesh.clone() as any);
+          }
 
           scene.add(finalResultMesh);
           exportMeshRef.current = finalResultMesh;
+
+          // Compute Ghost Part (waste) if requested
+          if (config.showGhostPart) {
+            try {
+              const tubeBrush = getBrush(tubeMesh, tubeGeom);
+              const resultingBrush = new Brush(finalResultMesh.geometry, resultMat);
+              const wasteBrush = boolEval.evaluate(tubeBrush, resultingBrush, SUBTRACTION);
+              
+              if (wasteBrush.geometry.attributes.position && wasteBrush.geometry.attributes.position.count > 0) {
+                 const ghostMat = new THREE.MeshStandardMaterial({
+                   color: 0x00ffff, transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide
+                 });
+                 const ghostPart = new THREE.Mesh(wasteBrush.geometry, ghostMat);
+                 ghostPart.name = 'zerogap_ghost_waste';
+                 ghostPart.position.copy(finalResultMesh.position);
+                 scene.add(ghostPart);
+              }
+            } catch (e) {
+              console.warn('Ghost part error:', e);
+            }
+          }
         }
+
+        // --- End of Boolean Mode block ---
+        } 
 
         // Function to filter out tube cap edges, parallel edges, and inner thickness edges, keeping only outer intersection curves
         const filterCutPathEdges = (edgesGeom: THREE.EdgesGeometry, tubeMatrix: THREE.Matrix4, tubeLength: number, w: number, h: number, isRound: boolean) => {
@@ -756,11 +806,11 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         };
 
         // Add explicit saddle contact rings (Red Borders) for ALL render modes
-        if ((config.showBorders || config.renderMode === 'boolean' || config.showToolpathPreview) && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut')) {
+        if ((config.showBorders || config.renderMode === 'boolean' || config.showToolpathPreview) && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut' || wizardStep === 'technical-review')) {
           const ev = new Evaluator();
           const tBrush = getBrush(tubeMesh, tubeGeom);
 
-          if (panGeom && panMesh && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut')) {
+          if (panGeom && panMesh && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut' || wizardStep === 'technical-review')) {
             try {
               const pGeomToCut = config.pan.applyThicknessToCut && panInnerGeom ? panInnerGeom : panGeom;
               const pBrush = getBrush(panMesh, pGeomToCut);
@@ -777,8 +827,8 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                 const panBoundZ = localContact.boundingBox?.max.z || 0; // Max penetration
 
                 let ghostMesh: THREE.Mesh | null = null;
-                if (config.renderMode === 'boolean') {
-                  console.log('Creating ghostMesh');
+                if (config.renderMode === 'boolean' || config.showGhostPart) {
+                  // Fallback or preview ghost
                   const ghostMat = new THREE.MeshStandardMaterial({
                     color: 0x00bfff, emissive: 0x0044aa, transparent: true, opacity: 0.3,
                     depthWrite: false, side: THREE.DoubleSide
@@ -796,7 +846,51 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                    }));
                    saddle.name = 'zerogap_pan_ring';
                    
-                   tubeMesh.add(saddle);
+                   if (config.renderMode === 'boolean') {
+                     saddle.applyMatrix4(tubeMesh.matrixWorld);
+                     scene.add(saddle);
+                   } else {
+                     tubeMesh.add(saddle);
+                   }
+
+                   // Add animated laser dot for Pan Cut
+                   if (wizardStep === 'technical-review' || wizardStep === 'final-inspect') {
+                     const dotGeom = new THREE.SphereGeometry(1.5, 8, 8);
+                     const dotMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+                     const dot = new THREE.Mesh(dotGeom, dotMat);
+                     dot.name = 'zerogap_laser_dot';
+                     
+                     // Extract sorted points from filteredEdges for smooth animation
+                     const points: THREE.Vector3[] = [];
+                     const pos = filteredEdges.attributes.position.array;
+                     for (let i = 0; i < pos.length; i += 3) {
+                       points.push(new THREE.Vector3(pos[i], pos[i + 1], pos[i + 2]));
+                     }
+                     // Sort points to create a continuous path (simple nearest neighbor)
+                     const sorted: THREE.Vector3[] = [];
+                     if (points.length > 0) {
+                       let curr = points[0];
+                       sorted.push(curr);
+                       points.splice(0, 1);
+                       while (points.length > 0) {
+                         let minDist = Infinity;
+                         let minIdx = -1;
+                         for (let j = 0; j < points.length; j++) {
+                           const d = curr.distanceToSquared(points[j]);
+                           if (d < minDist) { minDist = d; minIdx = j; }
+                         }
+                         curr = points[minIdx];
+                         sorted.push(curr);
+                         points.splice(minIdx, 1);
+                       }
+                     }
+                     dot.userData.points = sorted;
+                     tubeMesh.add(dot);
+
+                     const lLight = new THREE.PointLight(0x00ffff, 5, 20);
+                     lLight.name = 'zerogap_laser_light';
+                     tubeMesh.add(lLight);
+                   }
                 }
 
                 if (config.showToolpathPreview && (wizardStep === 'final-inspect' || wizardStep === 'technical-review')) {
@@ -815,12 +909,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                 }
 
                 if (config.showGhostPart && ghostMesh) {
-                  if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
-                     ghostMesh.geometry.translate(shiftX, shiftY, shiftZ);
-                     finalResultMesh.add(ghostMesh);
-                  } else {
-                     scene.add(ghostMesh);
-                  }
+                   scene.add(ghostMesh);
                 }
               }
             } catch(e) {}
@@ -838,7 +927,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                 const handleBoundZ = localContact.boundingBox?.min.z || config.tube.partLength;
 
                 let ghostMesh: THREE.Mesh | null = null;
-                if (config.renderMode === 'boolean') {
+                if (config.renderMode === 'boolean' || config.showGhostPart) {
                   const ghostMat = new THREE.MeshStandardMaterial({
                     color: 0x00ff00, emissive: 0x004400, transparent: true, opacity: 0.3,
                     depthWrite: false, side: THREE.DoubleSide
@@ -856,7 +945,12 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                    }));
                    saddle.name = 'zerogap_handle_ring';
 
-                   tubeMesh.add(saddle);
+                   if (config.renderMode === 'boolean') {
+                     saddle.applyMatrix4(tubeMesh.matrixWorld);
+                     scene.add(saddle);
+                   } else {
+                     tubeMesh.add(saddle);
+                   }
                 }
 
                 if (config.showToolpathPreview && (wizardStep === 'final-inspect' || wizardStep === 'technical-review')) {
@@ -875,12 +969,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                 }
 
                 if (config.showGhostPart && ghostMesh) {
-                  if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
-                     ghostMesh.geometry.translate(shiftX, shiftY, shiftZ);
-                     finalResultMesh.add(ghostMesh);
-                  } else {
-                     scene.add(ghostMesh);
-                  }
+                   scene.add(ghostMesh);
                 }
               }
             } catch(e) {}
@@ -897,7 +986,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         
         setIsLoading(false);
 
-        // ── 6. Auto-frame camera (only on first load or STL change) ──────────
+        // ── 6. Auto-frame camera (only on first load, STL change, or step change to inspection) ──────────
         if (controlsRef.current && cameraRef.current && exportMeshRef.current) {
           const bb = new THREE.Box3();
           if (config.renderMode === 'preview') {
@@ -910,9 +999,15 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
             if (onDimensionsChange) {
                const size = new THREE.Vector3();
                bb.getSize(size);
-               onDimensionsChange({l: size.z, w: size.x, h: size.y}); // Assuming Z is length, X is width, Y is height
+               onDimensionsChange({l: size.z, w: size.x, h: size.y}); 
             }
-            if (!hasAutoCentered.current || lastStlName.current !== config.tube.customStlName) {
+
+            const isInspectionStep = wizardStep === 'technical-review' || wizardStep === 'final-inspect';
+            const shouldRecenter = !hasAutoCentered.current || 
+                                  lastStlName.current !== config.tube.customStlName ||
+                                  (isInspectionStep && lastStep.current !== wizardStep);
+
+            if (shouldRecenter) {
               const worldCenter = new THREE.Vector3();
               bb.getCenter(worldCenter);
 
@@ -934,13 +1029,11 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
 
               hasAutoCentered.current = true;
               lastStlName.current = config.tube.customStlName;
+              lastStep.current = wizardStep;
               controlsRef.current.update();
             }
-            // NOTE: we do NOT call target.copy() here on every param change —
-            // that was the root cause of the sidebar-scrolling viewport shift.
           }
         }
-      }
 
       } catch (e: any) {
         const errorMessage = errorHandler.handle(e, 'GeometryEngine');
