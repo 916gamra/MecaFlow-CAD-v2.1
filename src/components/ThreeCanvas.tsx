@@ -640,11 +640,11 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
 
         if (config.renderMode === 'preview') {
           // Preview Mode: Show raw objects
-          if (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut') {
+          if (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'technical-review' || wizardStep === 'tube-handle-cut') {
             scene.add(tubeMesh);
             exportMeshRef.current = tubeMesh;
 
-            if (panMesh && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut')) {
+            if (panMesh && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'technical-review' || wizardStep === 'tube-handle-cut')) {
               scene.add(panMesh);
               if (panInnerMesh && config.pan.useShellPreview) scene.add(panInnerMesh);
             }
@@ -657,13 +657,13 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
           let resultBrush = tBrush;
           const boolEval = new Evaluator();
 
-          if (panGeom && panMesh && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut')) {
+          if (panGeom && panMesh && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'technical-review' || wizardStep === 'tube-handle-cut')) {
              const pG = config.pan.applyThicknessToCut && panInnerGeom ? panInnerGeom : panGeom;
              const pBrush = getBrush(panMesh, pG);
              resultBrush = boolEval.evaluate(resultBrush, pBrush, SUBTRACTION);
           }
 
-          if (handleGeom && handleMeshObj && (wizardStep === 'tube-handle-cut' || wizardStep === 'final-inspect')) {
+          if (handleGeom && handleMeshObj && (wizardStep === 'tube-handle-cut' || wizardStep === 'technical-review' || wizardStep === 'final-inspect')) {
              const hBrush = getBrush(handleMeshObj, handleGeom);
              resultBrush = boolEval.evaluate(resultBrush, hBrush, SUBTRACTION);
           }
@@ -736,8 +736,6 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                // Only keep edges that lie entirely on the outer surface of the tube.
                // (This discards inner thickness edges or box corners inside the tube)
                if (isPointOnOuterSurface(v1) && isPointOnOuterSurface(v2)) {
-                 v1.applyMatrix4(tubeMatrix);
-                 v2.applyMatrix4(tubeMatrix);
                  filtered.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
                }
             }
@@ -748,11 +746,11 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         };
 
         // Add explicit saddle contact rings (Red Borders) for ALL render modes
-        if ((config.showBorders || config.renderMode === 'boolean' || config.showToolpathPreview) && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut')) {
+        if ((config.showBorders || config.renderMode === 'boolean' || config.showToolpathPreview) && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'technical-review' || wizardStep === 'tube-handle-cut')) {
           const ev = new Evaluator();
           const tBrush = getBrush(tubeMesh, tubeGeom);
 
-          if (panGeom && panMesh && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut')) {
+          if (panGeom && panMesh && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'technical-review' || wizardStep === 'tube-handle-cut')) {
             try {
               const pGeomToCut = config.pan.applyThicknessToCut && panInnerGeom ? panInnerGeom : panGeom;
               const pBrush = getBrush(panMesh, pGeomToCut);
@@ -781,26 +779,17 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
 
                 if (config.showBorders || config.showToolpathPreview) {
                    const edges = new THREE.EdgesGeometry(contactForEdges.geometry, 30);
-                   const filteredEdges = edges; // Testing WITHOUT filtering
-                   console.log('RAW pan edges count:', filteredEdges.attributes.position.array.length / 6);
+                   const filteredEdges = filterCutPathEdges(edges, tubeMesh.matrixWorld, config.tube.partLength, config.tube.width, config.tube.height || config.tube.width, config.tube.shape === 'دائري');
                    
                    const saddle = new THREE.LineSegments(filteredEdges, new THREE.LineBasicMaterial({ 
                      color: 0x00ffff, linewidth: 2, depthTest: false, transparent: true, opacity: 0.9
                    }));
                    saddle.name = 'zerogap_pan_ring';
-
-                   if (ghostMesh) ghostMesh.add(saddle);
-                   else {
-                     if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
-                        saddle.geometry.translate(shiftX, shiftY, shiftZ);
-                        finalResultMesh.add(saddle);
-                     } else {
-                        scene.add(saddle);
-                     }
-                   }
+                   
+                   tubeMesh.add(saddle);
                 }
 
-                if (config.showToolpathPreview && wizardStep === 'final-inspect') {
+                if (config.showToolpathPreview && (wizardStep === 'final-inspect' || wizardStep === 'technical-review')) {
                    const ringGeom = new THREE.BufferGeometry();
                    const pts = [];
                    const r = config.tube.diameter / 2 + 0.1;
@@ -809,17 +798,10 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                       pts.push(Math.cos(a)*r, Math.sin(a)*r, panBoundZ);
                    }
                    ringGeom.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-                   const ringLine = new THREE.Line(ringGeom, new THREE.LineBasicMaterial({ color: 0xffaa00, linewidth: 2, depthTest: false }));
+                   const ringLine = new THREE.Line(ringGeom, new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 2, depthTest: false }));
                    ringLine.renderOrder = 999;
                    
-                   if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
-                      const ringClone = ringLine.clone();
-                      ringClone.applyMatrix4(tubeMesh.matrixWorld);
-                      ringClone.geometry.translate(shiftX, shiftY, shiftZ);
-                      finalResultMesh.add(ringClone);
-                   } else {
-                      tubeMesh.add(ringLine);
-                   }
+                   tubeMesh.add(ringLine);
                 }
 
                 if (ghostMesh) {
@@ -834,7 +816,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
             } catch(e) {}
           }
           
-          if (handleGeom && handleMeshObj && (wizardStep === 'tube-handle-cut' || wizardStep === 'final-inspect')) {
+          if (handleGeom && handleMeshObj && (wizardStep === 'tube-handle-cut' || wizardStep === 'technical-review' || wizardStep === 'final-inspect')) {
             try {
               const hBrush = getBrush(handleMeshObj, handleGeom);
               const contact = ev.evaluate(tBrush, hBrush, INTERSECTION);
@@ -857,26 +839,17 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
 
                 if (config.showBorders || config.showToolpathPreview) {
                    const edges = new THREE.EdgesGeometry(contact.geometry, 30);
-                   const filteredEdges = edges; // Testing WITHOUT filtering
-                   console.log('RAW handle edges count:', filteredEdges.attributes.position.array.length / 6);
+                   const filteredEdges = filterCutPathEdges(edges, tubeMesh.matrixWorld, config.tube.partLength, config.tube.width, config.tube.height || config.tube.width, config.tube.shape === 'دائري');
                    
                    const saddle = new THREE.LineSegments(filteredEdges, new THREE.LineBasicMaterial({
-                     color: 0x00ffff, linewidth: 2, depthTest: false, transparent: true, opacity: 0.9
+                     color: 0x39ff14, linewidth: 2, depthTest: false, transparent: true, opacity: 0.9
                    }));
                    saddle.name = 'zerogap_handle_ring';
 
-                   if (ghostMesh) ghostMesh.add(saddle);
-                   else {
-                     if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
-                        saddle.geometry.translate(shiftX, shiftY, shiftZ);
-                        finalResultMesh.add(saddle);
-                     } else {
-                        scene.add(saddle);
-                     }
-                   }
+                   tubeMesh.add(saddle);
                 }
 
-                if (config.showToolpathPreview && wizardStep === 'final-inspect') {
+                if (config.showToolpathPreview && (wizardStep === 'final-inspect' || wizardStep === 'technical-review')) {
                    const ringGeom = new THREE.BufferGeometry();
                    const pts = [];
                    const r = config.tube.diameter / 2 + 0.1;
@@ -885,17 +858,10 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                       pts.push(Math.cos(a)*r, Math.sin(a)*r, handleBoundZ);
                    }
                    ringGeom.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-                   const ringLine = new THREE.Line(ringGeom, new THREE.LineBasicMaterial({ color: 0xffaa00, linewidth: 2, depthTest: false }));
+                   const ringLine = new THREE.Line(ringGeom, new THREE.LineBasicMaterial({ color: 0x39ff14, linewidth: 2, depthTest: false }));
                    ringLine.renderOrder = 999;
                    
-                   if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
-                      const ringClone = ringLine.clone();
-                      ringClone.applyMatrix4(tubeMesh.matrixWorld);
-                      ringClone.geometry.translate(shiftX, shiftY, shiftZ);
-                      finalResultMesh.add(ringClone);
-                   } else {
-                      tubeMesh.add(ringLine);
-                   }
+                   tubeMesh.add(ringLine);
                 }
 
                 if (ghostMesh) {

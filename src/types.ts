@@ -22,7 +22,8 @@ export type WizardStep =
   | 'handle-design'    // 3 - تصميم المقبض
   | 'pan-tube-cut'     // 4 - تقاطع المقلاة + الأنبوب
   | 'tube-handle-cut'  // 5 - تقاطع الأنبوب + المقبض
-  | 'final-inspect';   // 6 - المعاينة النهائية
+  | 'technical-review' // 6 - مراجعة البيانات الفنية (جديد)
+  | 'final-inspect';   // 7 - المعاينة النهائية
 
 /** Ordered list for stepper navigation */
 export const WIZARD_STEPS: WizardStep[] = [
@@ -32,6 +33,7 @@ export const WIZARD_STEPS: WizardStep[] = [
   'handle-design',
   'pan-tube-cut',
   'tube-handle-cut',
+  'technical-review',
   'final-inspect',
 ];
 
@@ -42,6 +44,7 @@ export const WIZARD_LABELS: Record<WizardStep, string> = {
   'handle-design':   'المقبض',
   'pan-tube-cut':    'مقلاة+أنبوب',
   'tube-handle-cut': 'أنبوب+مقبض',
+  'technical-review': 'البيانات الفنية',
   'final-inspect':   'المعاينة',
 };
 

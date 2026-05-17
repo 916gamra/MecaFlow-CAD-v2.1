@@ -481,7 +481,39 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
         )}
 
         {/* ════════════════════════════════════════════════════════════════
-           STEP 6: FINAL INSPECTION
+           STEP 6: TECHNICAL REVIEW & MEASUREMENTS
+           ════════════════════════════════════════════════════════════════ */}
+        {wizardStep === 'technical-review' && (
+          <>
+            <div className="mb-6 p-4 bg-zinc-900/50 border border-zinc-800 rounded-lg">
+              <h3 className="text-emerald-400 text-xs font-bold mb-2 text-right">مراجعة البيانات الفنية</h3>
+              <p className="text-[10px] text-zinc-400 text-right leading-relaxed">
+                في هذه المرحلة، يمكنك معاينة القطعة النهائية ومراجعة القياسات الهندسية.
+              </p>
+            </div>
+
+            <section className="mb-6 border-b border-[var(--border)] pb-4">
+              <label className="block text-[10px] font-bold text-[var(--accent)] uppercase mb-3 text-right">إعدادات القياس</label>
+              <div className="p-3 bg-black/20 border border-zinc-800 rounded text-[10px] text-zinc-400 text-right">
+                سيتم إضافة أدوات القياس الفنية هنا للتحكم في أبعاد القطعة بشكل أدق.
+              </div>
+            </section>
+
+            {/* Visual Checks for this stage */}
+            <section className="mb-4">
+              <label className="block text-[10px] font-bold text-[var(--text-dim)] uppercase mb-3 text-right">المعايير البصرية</label>
+              {renderToggle('إظهار مسار القطع', config.showBorders,
+                () => onUpdate({ ...config, showBorders: !config.showBorders }),
+                '#00ffff')}
+              {renderToggle('إظهار خيال الأطراف', !!config.showGhostPart,
+                () => onUpdate({ ...config, showGhostPart: !config.showGhostPart }),
+                '#00ff00')}
+            </section>
+          </>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════
+           STEP 7: FINAL INSPECTION
            ════════════════════════════════════════════════════════════════ */}
         {wizardStep === 'final-inspect' && (
           <>
@@ -575,7 +607,9 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
           ← السابق
         </button>
         <button className="wizard-nav-btn primary" onClick={onNext} disabled={!canGoNext}>
-          {wizardStep === 'tube-handle-cut' ? 'المعاينة النهائية →' : 'التالي →'}
+          {wizardStep === 'tube-handle-cut' ? 'مراجعة البيانات →' : 
+           wizardStep === 'technical-review' ? 'المعاينة النهائية →' : 
+           'التالي →'}
         </button>
       </div>
     </aside>

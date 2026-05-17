@@ -231,7 +231,7 @@ export default function App() {
             <div className={`absolute ${isDashboard ? 'bottom-0 left-0 right-0 h-[24px] border-t border-zinc-800 bg-zinc-900/80' : 'bottom-4 left-4 rounded-lg border border-zinc-700 bg-zinc-950/80 backdrop-blur'} px-4 py-2 flex items-center gap-5 text-zinc-500 text-[10px] uppercase font-mono z-20`}>
               <span className="flex items-center gap-2 text-zinc-300">
                 <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.4)] animate-pulse" />
-                {isDashboard ? 'جاهز' : `المرحلة ${currentStepIdx} / 6`}
+                {isDashboard ? 'جاهز' : `المرحلة ${currentStepIdx} / 7`}
               </span>
               {!isDashboard && (
                 <>
