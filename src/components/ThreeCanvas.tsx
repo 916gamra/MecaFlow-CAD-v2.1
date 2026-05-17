@@ -631,18 +631,17 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
           panInnerMesh.updateMatrixWorld(true);
         }
 
-        // Tube tilt + offset — Apply inverse of insertion distance
-        const maxInsertion = 150;
-        const invertedInsertion = maxInsertion - (config.assembly.insertionDistance || 0);
+        // Tube tilt + offset — Apply relative insertion distance (0 = no penetration, higher = more)
+        const panInsertionZ = -tl / 2 + (config.assembly.insertionDistance || 0);
 
-        tubeMesh.position.set(0, config.assembly.heightOffset, -invertedInsertion);
+        tubeMesh.position.set(0, config.assembly.heightOffset, panInsertionZ);
         tubeMesh.rotation.set(angleRad, 0, tubeRoll);
         tubeMesh.updateMatrixWorld(true);
 
         // Handle at End B
         if (handleMeshObj) {
           const hCfg2 = config.handle;
-          handleMeshObj.position.set(hCfg2.offsetZ || 0, 0, -tl / 2 + (150 - (hCfg2.insertionDepth || 0)));
+          handleMeshObj.position.set(hCfg2.offsetZ || 0, 0, tl / 2 - (hCfg2.insertionDepth || 0));
           handleMeshObj.rotation.x = (hCfg2.angleX || 0) * (Math.PI / 180);
           handleMeshObj.rotation.y = (hCfg2.angleY || 0) * (Math.PI / 180);
           
