@@ -38,11 +38,18 @@ export const FileViewer: React.FC<FileViewerProps> = ({ onClose }) => {
     camera.position.set(100, 100, 100);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    containerRef.current.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      containerRef.current.appendChild(renderer.domElement);
+      rendererRef.current = renderer;
+    } catch (e) {
+      console.warn("FileViewer: WebGL context could not be created", e);
+      setError("تعذر إنشاء مساحة عرض 3D (WebGL). يرجى التحقق من المتصفح.");
+      return;
+    }
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -91,8 +98,11 @@ export const FileViewer: React.FC<FileViewerProps> = ({ onClose }) => {
     return () => {
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationId);
-      renderer.dispose();
-      renderer.domElement.remove();
+      if (renderer) {
+        renderer.forceContextLoss();
+        renderer.dispose();
+        renderer.domElement.remove();
+      }
     };
   }, []);
 

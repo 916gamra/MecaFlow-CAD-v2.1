@@ -189,15 +189,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         const index = Math.floor((timestamp * speed) % pts.length);
         const p = pts[index];
         
-        if (laserPoint.userData.isInWorldSpace && laserPoint.userData.parentMatrix) {
-          const worldPos = p.clone().applyMatrix4(laserPoint.userData.parentMatrix);
-          if (laserPoint.userData.offset) {
-            worldPos.add(laserPoint.userData.offset);
-          }
-          laserPoint.position.copy(worldPos);
-        } else {
-          laserPoint.position.set(p.x, p.y, p.z);
-        }
+        laserPoint.position.set(p.x, p.y, p.z);
         
         // Add a small trail or light effect
         const laserLight = scene.getObjectByName('zerogap_laser_light') as THREE.PointLight;
@@ -230,8 +222,11 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
     return () => {
       resizeObs.disconnect();
       cancelAnimationFrame(animId);
-      renderer?.dispose();
-      renderer?.domElement.remove();
+      if (renderer) {
+        renderer.forceContextLoss();
+        renderer.dispose();
+        renderer.domElement.remove();
+      }
     };
   }, []);
 
@@ -684,10 +679,23 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
           }
         } else {
           // Boolean Mode (Zero Cut)
+          const centerObject = (mesh: THREE.Object3D) => {
+            if (mesh instanceof THREE.Mesh && mesh.geometry && !mesh.userData.isCentered) {
+              mesh.userData.isCentered = true;
+              mesh.geometry.computeBoundingBox();
+              const center = new THREE.Vector3();
+              mesh.geometry.boundingBox?.getCenter(center);
+              mesh.userData.centeredOffset = center.clone();
+              mesh.geometry.translate(-center.x, -center.y, -center.z);
+              mesh.position.set(0, 0, 0);
+              mesh.updateMatrixWorld(true);
+            }
+          };
+
           if (wizardStep === 'final-inspect' && finalPartFromHandle) {
             finalResultMesh = finalPartFromHandle.clone() as any;
             finalResultMesh.name = 'zerogap_result';
-            finalResultMesh.position.set(0, 0, 0);
+            centerObject(finalResultMesh);
             scene.add(finalResultMesh);
             exportMeshRef.current = finalResultMesh;
             setIsLoading(false);
@@ -712,27 +720,21 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
               resultBrush.geometry = new THREE.BoxGeometry(1, 1, 1);
             }
 
-            // Capture world center for alignment
-            resultBrush.geometry.computeBoundingBox();
-            const partWorldCenter = new THREE.Vector3();
-            resultBrush.geometry.boundingBox?.getCenter(partWorldCenter);
-
-            resultBrush.geometry.center(); 
+            // Prepare geometry normals
             resultBrush.geometry.computeVertexNormals();
 
             const resultMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2, side: THREE.DoubleSide });
             finalResultMesh = new THREE.Mesh(resultBrush.geometry, resultMat);
             finalResultMesh.name = 'zerogap_result';
-            finalResultMesh.position.set(0, 0, 0);
-            finalResultMesh.updateMatrixWorld(true);
+            
+            centerObject(finalResultMesh);
 
-            if ((wizardStep === 'tube-handle-cut' || wizardStep === 'technical-review') && onResultComputed) {
+            if ((wizardStep === 'tube-handle-cut' || wizardStep === 'technical-review' || wizardStep === 'pan-tube-cut') && onResultComputed) {
               onResultComputed(finalResultMesh.clone() as any);
             }
 
             scene.add(finalResultMesh);
             exportMeshRef.current = finalResultMesh;
-            (finalResultMesh as any).userData.centeredOffset = partWorldCenter;
 
             // --- SEPARATE GHOST PIECES IN BOOLEAN MODE ---
             if (config.showGhostPart) {
@@ -744,12 +746,13 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                     const pBrush = getBrush(panMesh, pGeomToCut);
                     const panWaste = boolEval.evaluate(tBrushGhost, pBrush, INTERSECTION);
                     if (panWaste.geometry.attributes.position && panWaste.geometry.attributes.position.count > 0) {
-                       panWaste.geometry.translate(-partWorldCenter.x, -partWorldCenter.y, -partWorldCenter.z);
                        const wMat = new THREE.MeshStandardMaterial({
-                          color: 0x00bfff, emissive: 0x004488, transparent: true, opacity: 0.4, depthWrite: false, side: THREE.DoubleSide
+                          color: 0x00bfff, emissive: 0x004488, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide
                        });
                        const wasteObj = new THREE.Mesh(panWaste.geometry, wMat);
                        wasteObj.name = 'zerogap_ghost_pan';
+                       const centerOffset = finalResultMesh?.userData.centeredOffset;
+                       if (centerOffset) wasteObj.geometry.translate(-centerOffset.x, -centerOffset.y, -centerOffset.z);
                        scene.add(wasteObj);
                     }
                   } catch(e) {}
@@ -760,12 +763,13 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                     const hBrush = getBrush(handleMeshObj, handleGeom);
                     const handleWaste = boolEval.evaluate(tBrushGhost, hBrush, INTERSECTION);
                     if (handleWaste.geometry.attributes.position && handleWaste.geometry.attributes.position.count > 0) {
-                       handleWaste.geometry.translate(-partWorldCenter.x, -partWorldCenter.y, -partWorldCenter.z);
                        const wMat = new THREE.MeshStandardMaterial({
-                          color: 0x39ff14, emissive: 0x004400, transparent: true, opacity: 0.4, depthWrite: false, side: THREE.DoubleSide
+                          color: 0x39ff14, emissive: 0x004400, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide
                        });
                        const wasteObj = new THREE.Mesh(handleWaste.geometry, wMat);
                        wasteObj.name = 'zerogap_ghost_handle';
+                       const centerOffset = finalResultMesh?.userData.centeredOffset;
+                       if (centerOffset) wasteObj.geometry.translate(-centerOffset.x, -centerOffset.y, -centerOffset.z);
                        scene.add(wasteObj);
                     }
                   } catch(e) {}
@@ -777,11 +781,10 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         } 
 
         // Function to filter out tube cap edges, parallel edges, and inner thickness edges, keeping only outer intersection curves
-        const filterCutPathEdges = (edgesGeom: THREE.EdgesGeometry, tubeMatrix: THREE.Matrix4, tubeLength: number, w: number, h: number, isRound: boolean) => {
+        const filterCutPathEdges = (edgesGeom: THREE.EdgesGeometry, tubeLength: number, w: number, h: number, isRound: boolean) => {
           if (!edgesGeom.attributes.position) return edgesGeom;
           const positions = edgesGeom.attributes.position.array;
           const filtered = [];
-          const invMat = tubeMatrix.clone().invert();
           const v1 = new THREE.Vector3();
           const v2 = new THREE.Vector3();
           
@@ -801,9 +804,6 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
           for (let i = 0; i < positions.length; i += 6) {
             v1.set(positions[i], positions[i+1], positions[i+2]);
             v2.set(positions[i+3], positions[i+4], positions[i+5]);
-            
-            v1.applyMatrix4(invMat);
-            v2.applyMatrix4(invMat);
             
             const eps = 1.0; 
             const isStartCap = Math.abs(v1.z + tubeLength/2) < eps && Math.abs(v2.z + tubeLength/2) < eps;
@@ -839,13 +839,12 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
 
               if (contact && contact.geometry.attributes.position?.count > 0) {
                 const localContact = contact.geometry.clone();
-                localContact.applyMatrix4(tubeMesh.matrixWorld.clone().invert());
                 localContact.computeBoundingBox();
                 const panBoundZ = localContact.boundingBox?.max.z || 0; 
 
                 if (config.showBorders || config.showToolpathPreview) {
                    const edges = new THREE.EdgesGeometry(contactForEdges.geometry, 30);
-                   const filteredEdges = filterCutPathEdges(edges, tubeMesh.matrixWorld, tl, config.tube.width, config.tube.height || config.tube.width, config.tube.shape === 'دائري');
+                   const filteredEdges = filterCutPathEdges(edges, tl, config.tube.width, config.tube.height || config.tube.width, config.tube.shape === 'دائري');
                    
                    const saddle = new THREE.LineSegments(filteredEdges, new THREE.LineBasicMaterial({ 
                      color: 0x00ffff, linewidth: 2, depthTest: false, transparent: true, opacity: 0.9
@@ -853,9 +852,8 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                    saddle.name = 'zerogap_pan_ring';
                    
                    if (effectiveRenderMode === 'boolean') {
-                      const centerOffset = (finalResultMesh as any).userData.centeredOffset as THREE.Vector3;
-                      saddle.geometry.applyMatrix4(tubeMesh.matrixWorld);
-                      saddle.geometry.translate(-centerOffset.x, -centerOffset.y, -centerOffset.z);
+                      const centerOffset = finalResultMesh?.userData.centeredOffset;
+                      if (centerOffset) saddle.geometry.translate(-centerOffset.x, -centerOffset.y, -centerOffset.z);
                       scene.add(saddle);
                    } else {
                       tubeMesh.add(saddle);
@@ -892,10 +890,8 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                      }
                      dot.userData.points = sorted;
                      if (effectiveRenderMode === 'boolean') {
-                       const centerOffset = (finalResultMesh as any).userData.centeredOffset as THREE.Vector3;
-                       dot.userData.isInWorldSpace = true;
-                       dot.userData.parentMatrix = tubeMesh.matrixWorld.clone();
-                       dot.userData.offset = new THREE.Vector3().copy(centerOffset).negate();
+                       const centerOffset = finalResultMesh?.userData.centeredOffset;
+                       if (centerOffset) dot.userData.offset = new THREE.Vector3(-centerOffset.x, -centerOffset.y, -centerOffset.z);
                        scene.add(dot);
                      } else {
                        tubeMesh.add(dot);
@@ -924,9 +920,8 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                    ringLine.renderOrder = 999;
                    
                    if (effectiveRenderMode === 'boolean') {
-                      const centerOffset = (finalResultMesh as any).userData.centeredOffset as THREE.Vector3;
-                      ringLine.geometry.applyMatrix4(tubeMesh.matrixWorld);
-                      ringLine.geometry.translate(-centerOffset.x, -centerOffset.y, -centerOffset.z);
+                      const centerOffset = finalResultMesh?.userData.centeredOffset;
+                      if (centerOffset) ringLine.geometry.translate(-centerOffset.x, -centerOffset.y, -centerOffset.z);
                       scene.add(ringLine);
                    } else {
                       tubeMesh.add(ringLine);
@@ -942,13 +937,12 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
               const contact = ev.evaluate(tBrush, hBrush, INTERSECTION);
               if (contact && contact.geometry.attributes.position?.count > 0) {
                 const localContact = contact.geometry.clone();
-                localContact.applyMatrix4(tubeMesh.matrixWorld.clone().invert());
                 localContact.computeBoundingBox();
                 const handleBoundZ = localContact.boundingBox?.min.z || config.tube.partLength;
 
                 if (config.showBorders || config.showToolpathPreview) {
                    const edges = new THREE.EdgesGeometry(contact.geometry, 30);
-                   const filteredEdges = filterCutPathEdges(edges, tubeMesh.matrixWorld, tl, config.tube.width, config.tube.height || config.tube.width, config.tube.shape === 'دائري');
+                   const filteredEdges = filterCutPathEdges(edges, tl, config.tube.width, config.tube.height || config.tube.width, config.tube.shape === 'دائري');
                    
                    const saddle = new THREE.LineSegments(filteredEdges, new THREE.LineBasicMaterial({
                      color: 0x39ff14, linewidth: 2, depthTest: false, transparent: true, opacity: 0.9
@@ -956,9 +950,8 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                    saddle.name = 'zerogap_handle_ring';
 
                    if (effectiveRenderMode === 'boolean') {
-                      const centerOffset = (finalResultMesh as any).userData.centeredOffset as THREE.Vector3;
-                      saddle.geometry.applyMatrix4(tubeMesh.matrixWorld);
-                      saddle.geometry.translate(-centerOffset.x, -centerOffset.y, -centerOffset.z);
+                      const centerOffset = finalResultMesh?.userData.centeredOffset;
+                      if (centerOffset) saddle.geometry.translate(-centerOffset.x, -centerOffset.y, -centerOffset.z);
                       scene.add(saddle);
                    } else {
                       tubeMesh.add(saddle);
@@ -978,9 +971,8 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                    ringLine.renderOrder = 999;
                    
                    if (effectiveRenderMode === 'boolean') {
-                      const centerOffset = (finalResultMesh as any).userData.centeredOffset as THREE.Vector3;
-                      ringLine.geometry.applyMatrix4(tubeMesh.matrixWorld);
-                      ringLine.geometry.translate(-centerOffset.x, -centerOffset.y, -centerOffset.z);
+                      const centerOffset = finalResultMesh?.userData.centeredOffset;
+                      if (centerOffset) ringLine.geometry.translate(-centerOffset.x, -centerOffset.y, -centerOffset.z);
                       scene.add(ringLine);
                    } else {
                       tubeMesh.add(ringLine);

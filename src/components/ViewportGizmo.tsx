@@ -59,19 +59,27 @@ function makeTextTexture(text: string, bgColor: string, textColor: string): THRE
 }
 
 export const ViewportGizmo: React.FC<ViewportGizmoProps> = ({ cameraRef }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const gizmoCameraRef = useRef<THREE.PerspectiveCamera | null>(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const container = containerRef.current;
+    if (!container) return;
 
     // Mini renderer
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    renderer.setSize(SIZE, SIZE);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    rendererRef.current = renderer;
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(SIZE, SIZE);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.domElement.classList.add('absolute', 'inset-0');
+      container.appendChild(renderer.domElement);
+      rendererRef.current = renderer;
+    } catch (e) {
+      console.warn("ViewportGizmo: WebGL context could not be created", e);
+      return;
+    }
 
     // Mini scene
     const scene = new THREE.Scene();
@@ -129,7 +137,11 @@ export const ViewportGizmo: React.FC<ViewportGizmoProps> = ({ cameraRef }) => {
 
     return () => {
       cancelAnimationFrame(animId);
-      renderer.dispose();
+      if (renderer) {
+        renderer.forceContextLoss();
+        renderer.dispose();
+        renderer.domElement.remove();
+      }
       materials.forEach(m => { m.map?.dispose(); m.dispose(); });
       cubeGeom.dispose();
       edges.dispose();
@@ -143,13 +155,10 @@ export const ViewportGizmo: React.FC<ViewportGizmoProps> = ({ cameraRef }) => {
     >
       <div className="text-[10px] text-[var(--text-dim)] font-bold tracking-widest text-center mb-1">المنظور</div>
       
-      <div className="relative w-24 h-24 bg-black/40 rounded-full flex items-center justify-center border border-white/5 shadow-inner overflow-hidden">
-        <canvas
-          ref={canvasRef}
-          width={SIZE}
-          height={SIZE}
-          className="absolute inset-0"
-        />
+      <div 
+        ref={containerRef}
+        className="relative w-24 h-24 bg-black/40 rounded-full flex items-center justify-center border border-white/5 shadow-inner overflow-hidden"
+      >
       </div>
 
       <div className="flex gap-2 text-[8px] font-bold font-mono mt-1 px-2 py-1 bg-white/5 rounded-xl border border-white/5">
