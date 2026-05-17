@@ -429,10 +429,10 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
 
             <section className="mb-6 border-b border-[var(--border)] pb-4">
               <label className="block text-[10px] font-bold text-[var(--text-dim)] uppercase mb-3 text-right">ضبط تركيب طرف A (المقلاة)</label>
-              {renderSlider('زاوية الميل', config.assembly.tiltAngle, v => updateAssembly('tiltAngle', v), -90, 90)}
+              {renderSlider('زاوية الميل (محور X)', config.assembly.tiltAngle, v => updateAssembly('tiltAngle', v), -90, 90)}
               {renderSlider('دوران Twist (محور Z)', config.assembly.handleAngleY, v => updateAssembly('handleAngleY', v), -45, 45)}
-              {renderSlider('الارتفاع من القاع', config.assembly.heightOffset, v => updateAssembly('heightOffset', v), 0, 150)}
-              {renderSlider('عمق الاختراق', config.assembly.insertionDistance, v => updateAssembly('insertionDistance', v), 0, Math.floor(config.tube.totalLength * 0.455))}
+              {renderSlider('الارتفاع من القاع (محور Y)', config.assembly.heightOffset, v => updateAssembly('heightOffset', v), 0, 150)}
+              {renderSlider('عمق الاختراق (محور Z)', config.assembly.insertionDistance, v => updateAssembly('insertionDistance', v), 0, Math.floor(config.tube.totalLength * 0.455))}
             </section>
 
             <section className="mb-4">
@@ -465,9 +465,9 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
 
             <section className="mb-6 border-b border-[var(--border)] pb-4">
               <label className="block text-[10px] font-bold text-emerald-400 uppercase mb-3 text-right">ضبط تركيب طرف B (المقبض)</label>
-              {renderSlider('زاوية الميل', config.handle.angleX, v => updateHandle('angleX', v), -45, 45)}
+              {renderSlider('زاوية الميل (محور X)', config.handle.angleX, v => updateHandle('angleX', v), -45, 45)}
               {renderSlider('دوران Twist (محور Z)', config.handle.angleY, v => updateHandle('angleY', v), -45, 45)}
-              {renderSlider('إزاحة جانبية', config.handle.offsetZ, v => updateHandle('offsetZ', v), -50, 50)}
+              {renderSlider('إزاحة جانبية (محور Z)', config.handle.offsetZ, v => updateHandle('offsetZ', v), -50, 50)}
               {renderSlider('عمق الاختراق', config.handle.insertionDepth, v => updateHandle('insertionDepth', v), 0, Math.floor(config.tube.totalLength * 0.455))}
             </section>
 

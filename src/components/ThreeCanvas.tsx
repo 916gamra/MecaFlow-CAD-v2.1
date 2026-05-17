@@ -223,13 +223,9 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
       resizeObs.disconnect();
       cancelAnimationFrame(animId);
       if (renderer) {
-        try {
-          renderer.forceContextLoss();
-        } catch(e) {
-          console.warn('Failed to force context loss', e);
-        }
         renderer.dispose();
         renderer.domElement.remove();
+        rendererRef.current = null;
       }
     };
   }, []);
@@ -615,43 +611,39 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         }
 
         // ── 4. Apply assembly transforms ────────────────────────────────
-        const angleRad = (90 + config.assembly.tiltAngle) * (Math.PI / 180);
+        const angleRad = (90 - config.assembly.tiltAngle) * (Math.PI / 180);
         const tubeRoll = (config.assembly.handleAngleY || 0) * (Math.PI / 180);
 
         const effectiveRenderMode = (wizardStep === 'technical-review' || wizardStep === 'final-inspect') ? 'boolean' : config.renderMode;
 
-        // Pan at partLength relative to the tube center (which is 0,0,0 initially)
-        const panZOffset = config.tube.partLength - tl / 2;
-        if (panMesh) {
-          panMesh.position.set(0, 0, panZOffset);
-          panMesh.updateMatrixWorld(true);
-        }
-        if (panInnerMesh) {
-          panInnerMesh.position.set(0, 0, panZOffset);
-          panInnerMesh.updateMatrixWorld(true);
-        }
-
-        // Tube tilt + offset — Apply relative insertion distance (0 = no penetration, higher = more)
-        const panInsertionZ = -tl / 2 + (config.assembly.insertionDistance || 0);
-
-        tubeMesh.position.set(0, config.assembly.heightOffset, panInsertionZ);
-        tubeMesh.rotation.set(angleRad, 0, tubeRoll);
-        tubeMesh.updateMatrixWorld(true);
-
-        // Handle at End B
+        // Handle at End B (Face B)
         if (handleMeshObj) {
           const hCfg2 = config.handle;
+          // Place at End B (+tl/2), then apply insertion
           handleMeshObj.position.set(hCfg2.offsetZ || 0, 0, tl / 2 - (hCfg2.insertionDepth || 0));
           handleMeshObj.rotation.x = (hCfg2.angleX || 0) * (Math.PI / 180);
           handleMeshObj.rotation.y = (hCfg2.angleY || 0) * (Math.PI / 180);
           
-          // Since we are restoring the old way, the handle must rotate with the tube!
-          // BUT wait, in the old code handleMeshObj was a separate mesh, AND it was rotated individually?
-          // No, if handleMeshObj is placed at z=tl/2, it must be subject to tubeMesh's rotation!
-          // Ah, in the old code `handleMeshObj` was NOT added to tubeMesh until M5 step maybe?
-          // Let's add handleMeshObj directly to tubeMesh!
           tubeMesh.add(handleMeshObj);
         }
+
+        // Pan at End A (Face A) - Positioned relative to tubeMesh
+        const panZ = -tl / 2 + (config.assembly.insertionDistance || 0);
+        // Note: Y-axis is inverted: 0 is center, positive is down, negative is up
+        const panY = -(config.assembly.heightOffset || 0); 
+        if (panMesh) {
+          panMesh.position.set(0, panY, panZ);
+          panMesh.updateMatrixWorld(true);
+          tubeMesh.add(panMesh);
+        }
+        if (panInnerMesh) {
+          panInnerMesh.position.set(0, panY, panZ);
+          panInnerMesh.updateMatrixWorld(true);
+          tubeMesh.add(panInnerMesh);
+        }
+
+        tubeMesh.updateMatrixWorld(true);
+        tubeMesh.rotation.set(angleRad, 0, tubeRoll);
         tubeMesh.updateMatrixWorld(true);
 
         // ── Render ──────────────────────────────────────────────────

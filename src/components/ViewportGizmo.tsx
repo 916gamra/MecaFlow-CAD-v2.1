@@ -138,13 +138,9 @@ export const ViewportGizmo: React.FC<ViewportGizmoProps> = ({ cameraRef }) => {
     return () => {
       cancelAnimationFrame(animId);
       if (renderer) {
-        try {
-          renderer.forceContextLoss();
-        } catch(e) {
-          console.warn('Failed to force context loss', e);
-        }
         renderer.dispose();
         renderer.domElement.remove();
+        rendererRef.current = null;
       }
       materials.forEach(m => { m.map?.dispose(); m.dispose(); });
       cubeGeom.dispose();
