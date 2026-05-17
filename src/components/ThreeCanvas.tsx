@@ -223,7 +223,11 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
       resizeObs.disconnect();
       cancelAnimationFrame(animId);
       if (renderer) {
-        renderer.forceContextLoss();
+        try {
+          renderer.forceContextLoss();
+        } catch(e) {
+          console.warn('Failed to force context loss', e);
+        }
         renderer.dispose();
         renderer.domElement.remove();
       }
@@ -611,7 +615,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         }
 
         // ── 4. Apply assembly transforms ────────────────────────────────
-        const angleRad = (90 - config.assembly.tiltAngle) * (Math.PI / 180);
+        const angleRad = (90 + config.assembly.tiltAngle) * (Math.PI / 180);
         const tubeRoll = (config.assembly.handleAngleY || 0) * (Math.PI / 180);
 
         const effectiveRenderMode = (wizardStep === 'technical-review' || wizardStep === 'final-inspect') ? 'boolean' : config.renderMode;
@@ -627,15 +631,18 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
           panInnerMesh.updateMatrixWorld(true);
         }
 
-        // Tube tilt + offset
-        tubeMesh.position.set(0, config.assembly.heightOffset, -config.assembly.insertionDistance);
+        // Tube tilt + offset — Apply inverse of insertion distance
+        const maxInsertion = 150;
+        const invertedInsertion = maxInsertion - (config.assembly.insertionDistance || 0);
+
+        tubeMesh.position.set(0, config.assembly.heightOffset, -invertedInsertion);
         tubeMesh.rotation.set(angleRad, 0, tubeRoll);
         tubeMesh.updateMatrixWorld(true);
 
         // Handle at End B
         if (handleMeshObj) {
           const hCfg2 = config.handle;
-          handleMeshObj.position.set(hCfg2.offsetZ || 0, 0, -tl / 2 + (hCfg2.insertionDepth || 0));
+          handleMeshObj.position.set(hCfg2.offsetZ || 0, 0, -tl / 2 + (150 - (hCfg2.insertionDepth || 0)));
           handleMeshObj.rotation.x = (hCfg2.angleX || 0) * (Math.PI / 180);
           handleMeshObj.rotation.y = (hCfg2.angleY || 0) * (Math.PI / 180);
           
@@ -804,12 +811,8 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         };
 
         // --- 4 RINGS SYSTEM IN STEP 6 ---
-        if (wizardStep === 'technical-review' && config.showBodySlices) {
-            // الحلقة الطرفية A
-            createVisualRing(-tl / 2, 0xff6600, 3, 'zerogap_visual_ring_end_a');
-            // الحلقة الطرفية B
-            createVisualRing(tl / 2, 0xff6600, 3, 'zerogap_visual_ring_end_b');
-        }
+        let panBoundZ: number | null = null;
+        let handleBoundZ: number | null = null;
 
         // Function to filter out tube cap edges, parallel edges, and inner thickness edges, keeping only outer intersection curves
         const filterCutPathEdges = (edgesGeom: THREE.EdgesGeometry, tubeLength: number, w: number, h: number, isRound: boolean) => {
@@ -871,11 +874,10 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
               if (contact && contact.geometry.attributes.position?.count > 0) {
                 const localContact = contact.geometry.clone();
                 localContact.computeBoundingBox();
-                const panBoundZ = localContact.boundingBox?.max.z || 0; 
+                panBoundZ = localContact.boundingBox?.max.z || 0; 
 
-                if (wizardStep === 'technical-review' && config.showBodySlices) {
-                   createVisualRing(panBoundZ, 0xffaa33, 2, 'zerogap_visual_ring_pan');
-                }
+
+
 
                 if (config.showBorders || config.showToolpathPreview) {
                    const edges = new THREE.EdgesGeometry(contactForEdges.geometry, 30);
@@ -952,11 +954,9 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
               if (contact && contact.geometry.attributes.position?.count > 0) {
                 const localContact = contact.geometry.clone();
                 localContact.computeBoundingBox();
-                const handleBoundZ = localContact.boundingBox?.min.z || config.tube.partLength;
+                handleBoundZ = localContact.boundingBox?.min.z || config.tube.partLength;
 
-                if (wizardStep === 'technical-review' && config.showBodySlices) {
-                   createVisualRing(handleBoundZ, 0xffaa33, 2, 'zerogap_visual_ring_handle');
-                }
+
 
                 if (config.showBorders || config.showToolpathPreview) {
                    const edges = new THREE.EdgesGeometry(contact.geometry, 30);
@@ -978,6 +978,23 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
               }
             } catch(e) {}
           }
+        }
+
+        // ── 6. Cleanup & Auto-frame ──
+        
+        // --- Render the 4 defined rings once at the end ---
+        if (wizardStep === 'technical-review' && config.showBodySlices) {
+            const addRing = (z: number, color: number, name: string) => {
+               createVisualRing(z, color, 3, name);
+            }
+            
+            // End rings (Fixed)
+            addRing(-tl / 2, 0xff6600, 'zerogap_visual_ring_end_a');
+            addRing(tl / 2, 0xff6600, 'zerogap_visual_ring_end_b');
+            
+            // Intersection rings
+            if (panBoundZ !== null) addRing(panBoundZ, 0xffaa33, 'zerogap_visual_ring_pan');
+            if (handleBoundZ !== null) addRing(handleBoundZ, 0xffaa33, 'zerogap_visual_ring_handle');
         }
 
         tubeGeom.dispose();

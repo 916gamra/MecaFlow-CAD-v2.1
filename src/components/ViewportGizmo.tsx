@@ -16,10 +16,10 @@ const SIZE = 96; // matches D-Pad 24 * 4px = 96px
 const FACES: { dir: THREE.Vector3; label: string; color: string; labelColor: string }[] = [
   { dir: new THREE.Vector3( 0,  0,  1), label: 'A', color: '#000000', labelColor: '#00e5ff' },
   { dir: new THREE.Vector3( 0,  0, -1), label: 'B', color: '#000000', labelColor: '#ff6b35' },
-  { dir: new THREE.Vector3( 0,  1,  0), label: 'Y+', color: '#000000', labelColor: '#888888' },
-  { dir: new THREE.Vector3( 0, -1,  0), label: 'Y-', color: '#000000', labelColor: '#888888' },
-  { dir: new THREE.Vector3( 1,  0,  0), label: 'X+', color: '#000000', labelColor: '#888888' },
-  { dir: new THREE.Vector3(-1,  0,  0), label: 'X-', color: '#000000', labelColor: '#888888' },
+  { dir: new THREE.Vector3( 0,  1,  0), label: 'C', color: '#000000', labelColor: '#888888' },
+  { dir: new THREE.Vector3( 0, -1,  0), label: 'D', color: '#000000', labelColor: '#888888' },
+  { dir: new THREE.Vector3( 1,  0,  0), label: 'E', color: '#000000', labelColor: '#888888' },
+  { dir: new THREE.Vector3(-1,  0,  0), label: 'F', color: '#000000', labelColor: '#888888' },
 ];
 
 // Create a canvas texture with text for a cube face
@@ -48,7 +48,7 @@ function makeTextTexture(text: string, bgColor: string, textColor: string): THRE
 
   // Text
   ctx.fillStyle = textColor;
-  ctx.font = 'bold 24px sans-serif';
+  ctx.font = 'bold 48px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, size / 2, size / 2);
@@ -138,7 +138,11 @@ export const ViewportGizmo: React.FC<ViewportGizmoProps> = ({ cameraRef }) => {
     return () => {
       cancelAnimationFrame(animId);
       if (renderer) {
-        renderer.forceContextLoss();
+        try {
+          renderer.forceContextLoss();
+        } catch(e) {
+          console.warn('Failed to force context loss', e);
+        }
         renderer.dispose();
         renderer.domElement.remove();
       }
