@@ -17,13 +17,15 @@ interface ThreeCanvasProps {
   gridVisible: boolean;
   wizardStep: WizardStep;
   onDimensionsChange?: (dimensions: {l: number, w: number, h: number} | null) => void;
+  finalPartFromHandle?: THREE.Object3D | null;
+  onResultComputed?: (obj: THREE.Object3D) => void;
 }
 
 export interface ThreeCanvasRef {
   exportSTL: () => Promise<string | null>;
 }
 
-const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, gridVisible, wizardStep, onDimensionsChange }, ref) => {
+const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, gridVisible, wizardStep, onDimensionsChange, finalPartFromHandle, onResultComputed }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -651,11 +653,18 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
           }
         } else {
           // Boolean Mode (Zero Cut)
-          setIsLoading(true);
-          const tBrush = getBrush(tubeMesh, tubeGeom);
-
-          let resultBrush = tBrush;
-          const boolEval = new Evaluator();
+          if (wizardStep === 'final-inspect' && finalPartFromHandle) {
+            finalResultMesh = finalPartFromHandle.clone();
+            finalResultMesh.name = 'zerogap_result';
+            finalResultMesh.position.set(0, 0, 0);
+            scene.add(finalResultMesh);
+            exportMeshRef.current = finalResultMesh;
+            setIsLoading(false);
+          } else {
+            setIsLoading(true);
+            const tBrush = getBrush(tubeMesh, tubeGeom);
+            let resultBrush = tBrush;
+            const boolEval = new Evaluator();
 
           if (panGeom && panMesh && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'technical-review' || wizardStep === 'tube-handle-cut')) {
              const pG = config.pan.applyThicknessToCut && panInnerGeom ? panInnerGeom : panGeom;
@@ -673,15 +682,16 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
           }
 
           resultBrush.geometry.computeBoundingBox();
-          // Boolean CSG evaluation works in World Space. The resulting geometry
-          // already has all rotations, positions and cuts applied.
-          // There is no need to translate the geometry or copy quaternions from tubeMesh.
-          
+          resultBrush.geometry.center(); // Center the geometry itself
           resultBrush.geometry.computeVertexNormals();
 
           const resultMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2, side: THREE.DoubleSide });
           finalResultMesh = new THREE.Mesh(resultBrush.geometry, resultMat);
           finalResultMesh.name = 'zerogap_result';
+
+          if (wizardStep === 'tube-handle-cut' && onResultComputed) {
+            onResultComputed(finalResultMesh.clone());
+          }
 
           // Maintain centered position in the canvas at 0,0,0
           finalResultMesh.position.set(0, 0, 0);
@@ -746,11 +756,11 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         };
 
         // Add explicit saddle contact rings (Red Borders) for ALL render modes
-        if ((config.showBorders || config.renderMode === 'boolean' || config.showToolpathPreview) && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'technical-review' || wizardStep === 'tube-handle-cut')) {
+        if ((config.showBorders || config.renderMode === 'boolean' || config.showToolpathPreview) && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut')) {
           const ev = new Evaluator();
           const tBrush = getBrush(tubeMesh, tubeGeom);
 
-          if (panGeom && panMesh && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'technical-review' || wizardStep === 'tube-handle-cut')) {
+          if (panGeom && panMesh && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut')) {
             try {
               const pGeomToCut = config.pan.applyThicknessToCut && panInnerGeom ? panInnerGeom : panGeom;
               const pBrush = getBrush(panMesh, pGeomToCut);
@@ -792,7 +802,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                 if (config.showToolpathPreview && (wizardStep === 'final-inspect' || wizardStep === 'technical-review')) {
                    const ringGeom = new THREE.BufferGeometry();
                    const pts = [];
-                   const r = config.tube.diameter / 2 + 0.1;
+                   const r = config.tube.width / 2 + 0.1;
                    for(let i=0; i<=64; i++){
                       const a = (i/64)*Math.PI*2;
                       pts.push(Math.cos(a)*r, Math.sin(a)*r, panBoundZ);
@@ -804,7 +814,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                    tubeMesh.add(ringLine);
                 }
 
-                if (ghostMesh) {
+                if (config.showGhostPart && ghostMesh) {
                   if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
                      ghostMesh.geometry.translate(shiftX, shiftY, shiftZ);
                      finalResultMesh.add(ghostMesh);
@@ -852,7 +862,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                 if (config.showToolpathPreview && (wizardStep === 'final-inspect' || wizardStep === 'technical-review')) {
                    const ringGeom = new THREE.BufferGeometry();
                    const pts = [];
-                   const r = config.tube.diameter / 2 + 0.1;
+                   const r = config.tube.width / 2 + 0.1;
                    for(let i=0; i<=64; i++){
                       const a = (i/64)*Math.PI*2;
                       pts.push(Math.cos(a)*r, Math.sin(a)*r, handleBoundZ);
@@ -864,7 +874,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                    tubeMesh.add(ringLine);
                 }
 
-                if (ghostMesh) {
+                if (config.showGhostPart && ghostMesh) {
                   if (config.renderMode === 'boolean' && exportMeshRef.current === finalResultMesh) {
                      ghostMesh.geometry.translate(shiftX, shiftY, shiftZ);
                      finalResultMesh.add(ghostMesh);
@@ -930,6 +940,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
             // that was the root cause of the sidebar-scrolling viewport shift.
           }
         }
+      }
 
       } catch (e: any) {
         const errorMessage = errorHandler.handle(e, 'GeometryEngine');
@@ -951,6 +962,8 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
     config.handle,
     config.thermalClearance,
     config.showBorders,
+    config.showGhostPart,
+    config.showToolpathPreview,
     config.renderMode,
     gridVisible,
     webglError,

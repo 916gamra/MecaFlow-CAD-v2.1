@@ -437,8 +437,8 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
 
             <section className="mb-4">
               <label className="block text-[10px] font-bold text-[var(--text-dim)] uppercase mb-3 text-right">المعايير البصرية</label>
-              {renderToggle('عرض مسار القطع (خط أزرق أيوني)', config.showBorders,
-                () => onUpdate({ ...config, showBorders: !config.showBorders }),
+              {renderToggle('عرض مسار القطع (خط أزرق أيوني)', !!config.showToolpathPreview,
+                () => onUpdate({ ...config, showToolpathPreview: !config.showToolpathPreview }),
                 '#00ffff')}
             </section>
           </>
@@ -473,8 +473,8 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
 
             <section className="mb-4">
               <label className="block text-[10px] font-bold text-[var(--text-dim)] uppercase mb-3 text-right">المعايير البصرية</label>
-              {renderToggle('عرض مسار القطع (خط أزرق أيوني)', config.showBorders,
-                () => onUpdate({ ...config, showBorders: !config.showBorders }),
+              {renderToggle('عرض مسار القطع (خط أزرق أيوني)', !!config.showToolpathPreview,
+                () => onUpdate({ ...config, showToolpathPreview: !config.showToolpathPreview }),
                 '#00ffff')}
             </section>
           </>
@@ -502,8 +502,8 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
             {/* Visual Checks for this stage */}
             <section className="mb-4">
               <label className="block text-[10px] font-bold text-[var(--text-dim)] uppercase mb-3 text-right">المعايير البصرية</label>
-              {renderToggle('إظهار مسار القطع', config.showBorders,
-                () => onUpdate({ ...config, showBorders: !config.showBorders }),
+              {renderToggle('إظهار مسار القطع', !!config.showToolpathPreview,
+                () => onUpdate({ ...config, showToolpathPreview: !config.showToolpathPreview }),
                 '#00ffff')}
               {renderToggle('إظهار خيال الأطراف', !!config.showGhostPart,
                 () => onUpdate({ ...config, showGhostPart: !config.showGhostPart }),

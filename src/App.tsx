@@ -53,6 +53,7 @@ export default function App() {
   const [hasSavedConfig, setHasSavedConfig] = useState(false);
   const [dbLoaded, setDbLoaded] = useState(false);
   const [targetDimensions, setTargetDimensions] = useState<{l: number, w: number, h: number} | null>(null);
+  const [finalPartFromHandle, setFinalPartFromHandle] = useState<THREE.Object3D | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowSplash(false), 2000);
@@ -189,6 +190,8 @@ export default function App() {
                     gridVisible={state.gridVisible}
                     wizardStep={state.wizardStep}
                     onDimensionsChange={setTargetDimensions}
+                    finalPartFromHandle={finalPartFromHandle}
+                    onResultComputed={setFinalPartFromHandle}
                   />
                 </ErrorBoundary>
               )}
