@@ -824,7 +824,7 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         };
 
         // Add explicit saddle contact rings (Red Borders) for ALL render modes
-        if ((config.showBorders || effectiveRenderMode === 'boolean' || config.showToolpathPreview) && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut' || wizardStep === 'technical-review')) {
+        if ((config.showBorders || config.showToolpathPreview) && (wizardStep === 'pan-tube-cut' || wizardStep === 'final-inspect' || wizardStep === 'tube-handle-cut' || wizardStep === 'technical-review')) {
           const ev = new Evaluator();
           const tBrush = getBrush(tubeMesh, tubeGeom);
 
@@ -906,27 +906,6 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                      }
                    }
                 }
-
-                if (config.showToolpathPreview && (wizardStep === 'final-inspect' || wizardStep === 'technical-review')) {
-                   const ringGeom = new THREE.BufferGeometry();
-                   const pts = [];
-                   const r = config.tube.width / 2 + 0.1;
-                   for(let i=0; i<=64; i++){
-                      const a = (i/64)*Math.PI*2;
-                      pts.push(Math.cos(a)*r, Math.sin(a)*r, panBoundZ);
-                   }
-                   ringGeom.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-                   const ringLine = new THREE.Line(ringGeom, new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 2, depthTest: false }));
-                   ringLine.renderOrder = 999;
-                   
-                   if (effectiveRenderMode === 'boolean') {
-                      const centerOffset = finalResultMesh?.userData.centeredOffset;
-                      if (centerOffset) ringLine.geometry.translate(-centerOffset.x, -centerOffset.y, -centerOffset.z);
-                      scene.add(ringLine);
-                   } else {
-                      tubeMesh.add(ringLine);
-                   }
-                }
               }
             } catch(e) {}
           }
@@ -955,27 +934,6 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                       scene.add(saddle);
                    } else {
                       tubeMesh.add(saddle);
-                   }
-                }
-
-                if (config.showToolpathPreview && (wizardStep === 'final-inspect' || wizardStep === 'technical-review')) {
-                   const ringGeom = new THREE.BufferGeometry();
-                   const pts = [];
-                   const r = config.tube.width / 2 + 0.1;
-                   for(let i=0; i<=64; i++){
-                      const a = (i/64)*Math.PI*2;
-                      pts.push(Math.cos(a)*r, Math.sin(a)*r, handleBoundZ);
-                   }
-                   ringGeom.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-                   const ringLine = new THREE.Line(ringGeom, new THREE.LineBasicMaterial({ color: 0x39ff14, linewidth: 2, depthTest: false }));
-                   ringLine.renderOrder = 999;
-                   
-                   if (effectiveRenderMode === 'boolean') {
-                      const centerOffset = finalResultMesh?.userData.centeredOffset;
-                      if (centerOffset) ringLine.geometry.translate(-centerOffset.x, -centerOffset.y, -centerOffset.z);
-                      scene.add(ringLine);
-                   } else {
-                      tubeMesh.add(ringLine);
                    }
                 }
               }
