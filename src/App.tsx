@@ -21,6 +21,7 @@ const defaultZeroGap: CADState['zeroGap'] = {
   },
   tube: {
     width: 38, height: 25, thickness: 1.2, totalLength: 120, partLength: 70,
+    fixedHeadLength: 40, fixedTailLength: 30,
     cornerRadius: 5.75, shape: 'بيضاوي',
   },
   handle: {

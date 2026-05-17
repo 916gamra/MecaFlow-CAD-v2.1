@@ -291,15 +291,22 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
         const tl = config.tube.totalLength;
         let tubeGeom: THREE.BufferGeometry;
 
+        const getHeadTailLengths = () => {
+          const dPan = config.assembly.insertionDistance || 10;
+          const dHandle = config.handle.insertionDepth || 10;
+          return { headLength: Math.max(dPan, 10), tailLength: Math.max(dHandle, 10) };
+        };
+
+        const { headLength, tailLength } = getHeadTailLengths();
+        let bodyLength = tl - headLength - tailLength;
+        if (bodyLength < 1) bodyLength = 1;
+
         if (config.tube.shape === 'مخصص' && config.tube.customStlBuffer) {
           const loader = new STLLoader();
           tubeGeom = loader.parse(config.tube.customStlBuffer);
           tubeGeom.center();
           tubeGeom.computeVertexNormals();
         } else {
-          const HeadLen = Math.min(config.tube.partLength + 20, tl * 0.4);
-          const TailLen = Math.min(30, tl * 0.2);
-          const BodyLen = Math.max(1, tl - HeadLen - TailLen);
           const tt = config.tube.thickness;
           const tr = config.tube.shape === 'دائري' ? tw / 2 : config.tube.cornerRadius;
           const clearance = config.thermalClearance ? 0.1 : 0;
@@ -352,20 +359,8 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
             return outerShape;
           };
 
-          const headGeom = new THREE.ExtrudeGeometry(buildSection(), { depth: HeadLen, bevelEnabled: false, curveSegments: 16 });
-          const bodyGeom = new THREE.ExtrudeGeometry(buildSection(), { depth: BodyLen, bevelEnabled: false, curveSegments: 16 });
-          bodyGeom.translate(0, 0, HeadLen);
-          const tailGeom = new THREE.ExtrudeGeometry(buildSection(), { depth: TailLen, bevelEnabled: false, curveSegments: 16 });
-          tailGeom.translate(0, 0, HeadLen + BodyLen);
-
-          try {
-            tubeGeom = BufferGeometryUtils.mergeGeometries([headGeom, bodyGeom, tailGeom], false);
-          } catch {
-            tubeGeom = new THREE.ExtrudeGeometry(buildSection(), { depth: tl, bevelEnabled: false, curveSegments: 16 });
-          }
-          headGeom.dispose();
-          bodyGeom.dispose();
-          tailGeom.dispose();
+          // Use a single ExtrudeGeometry to avoid internal face artifacts in CSG
+          tubeGeom = new THREE.ExtrudeGeometry(buildSection(), { depth: tl, bevelEnabled: false, curveSegments: 16 });
         }
 
         const tuParams = `${config.tube.shape}-${tw}-${th}-${tl}-${config.tube.thickness}`;
@@ -780,6 +775,42 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
           }
         } 
 
+        const createVisualRing = (z: number, color: number, lineWidth: number = 2, ringName: string = 'zerogap_visual_ring') => {
+           const points: THREE.Vector2[] = [];
+           // Scale radius more dynamically to always be outside the tube
+           const r = Math.max(tw / 2, th / 2) * 1.35; 
+           for (let ang = 0; ang <= 2 * Math.PI; ang += 0.05) {
+             points.push(new THREE.Vector2(r * Math.cos(ang), r * Math.sin(ang)));
+           }
+
+           if (points.length > 0) {
+              const pts3 = points.map(p => new THREE.Vector3(p.x, p.y, z));
+              // The ring should be in the object local space, and then moved by the parent if needed in boolean mode
+              const geometry = new THREE.BufferGeometry().setFromPoints(pts3);
+              const material = new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.9, linewidth: lineWidth });
+              const ring = new THREE.LineLoop(geometry, material);
+              ring.name = ringName;
+              
+              if (effectiveRenderMode === 'boolean') {
+                 if (finalResultMesh?.userData.centeredOffset) {
+                    const centerOffset = finalResultMesh.userData.centeredOffset;
+                    ring.position.set(-centerOffset.x, -centerOffset.y, -centerOffset.z);
+                 }
+                 scene.add(ring);
+              } else {
+                 tubeMesh.add(ring);
+              }
+           }
+        };
+
+        // --- 4 RINGS SYSTEM IN STEP 6 ---
+        if (wizardStep === 'technical-review' && config.showBodySlices) {
+            // الحلقة الطرفية A
+            createVisualRing(-tl / 2, 0xff6600, 3, 'zerogap_visual_ring_end_a');
+            // الحلقة الطرفية B
+            createVisualRing(tl / 2, 0xff6600, 3, 'zerogap_visual_ring_end_b');
+        }
+
         // Function to filter out tube cap edges, parallel edges, and inner thickness edges, keeping only outer intersection curves
         const filterCutPathEdges = (edgesGeom: THREE.EdgesGeometry, tubeLength: number, w: number, h: number, isRound: boolean) => {
           if (!edgesGeom.attributes.position) return edgesGeom;
@@ -841,6 +872,10 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                 const localContact = contact.geometry.clone();
                 localContact.computeBoundingBox();
                 const panBoundZ = localContact.boundingBox?.max.z || 0; 
+
+                if (wizardStep === 'technical-review' && config.showBodySlices) {
+                   createVisualRing(panBoundZ, 0xffaa33, 2, 'zerogap_visual_ring_pan');
+                }
 
                 if (config.showBorders || config.showToolpathPreview) {
                    const edges = new THREE.EdgesGeometry(contactForEdges.geometry, 30);
@@ -918,6 +953,10 @@ const ThreeCanvas = forwardRef<ThreeCanvasRef, ThreeCanvasProps>(({ config, grid
                 const localContact = contact.geometry.clone();
                 localContact.computeBoundingBox();
                 const handleBoundZ = localContact.boundingBox?.min.z || config.tube.partLength;
+
+                if (wizardStep === 'technical-review' && config.showBodySlices) {
+                   createVisualRing(handleBoundZ, 0xffaa33, 2, 'zerogap_visual_ring_handle');
+                }
 
                 if (config.showBorders || config.showToolpathPreview) {
                    const edges = new THREE.EdgesGeometry(contact.geometry, 30);

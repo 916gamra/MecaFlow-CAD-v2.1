@@ -485,34 +485,44 @@ const ZeroGapControlPanel: React.FC<ControlPanelProps> = ({
            ════════════════════════════════════════════════════════════════ */}
         {wizardStep === 'technical-review' && (
           <>
-            <div className="mb-6 p-4 bg-zinc-900/50 border border-zinc-800 rounded-lg">
-              <h3 className="text-emerald-400 text-xs font-bold mb-2 text-right">مراجعة البيانات الفنية</h3>
-              <p className="text-[10px] text-zinc-400 text-right leading-relaxed">
-                في هذه المرحلة، يمكنك معاينة القطعة النهائية ومراجعة القياسات الهندسية.
-              </p>
-            </div>
-
+            {/* التحكم في طول القطعة */}
             <section className="mb-6 border-b border-[var(--border)] pb-4">
-              <label className="block text-[10px] font-bold text-[var(--accent)] uppercase mb-3 text-right">ضبط دقيق للطرف A (المقلاة)</label>
-              {renderSlider('زاوية الميل', config.assembly.tiltAngle, v => updateAssembly('tiltAngle', v), -90, 90)}
-              {renderSlider('الارتفاع من القاع', config.assembly.heightOffset, v => updateAssembly('heightOffset', v), 0, 150)}
+              <label className="block text-[10px] font-bold text-[var(--accent)] uppercase mb-3 text-right">
+                الطول الكلي للقطعة النهائية
+              </label>
+              {renderSlider('الطول الكلي (mm)', config.tube.totalLength, v => updateTube('totalLength', v), 50, 300)}
+              <div className="mt-2 text-[10px] text-[var(--text-dim)] flex justify-between">
+                <span>الرأس (ثابت حسب الاختراق): {Math.max(config.assembly.insertionDistance || 10, 10)} مم</span>
+                <span>الجسد: {(config.tube.totalLength - Math.max(config.assembly.insertionDistance || 10, 10) - Math.max(config.handle.insertionDepth || 10, 10)).toFixed(1)} مم</span>
+                <span>الذيل: {Math.max(config.handle.insertionDepth || 10, 10)} مم</span>
+              </div>
             </section>
 
+            {/* عرض القياسات التفصيلية */}
             <section className="mb-6 border-b border-[var(--border)] pb-4">
-              <label className="block text-[10px] font-bold text-emerald-400 uppercase mb-3 text-right">ضبط دقيق للطرف B (المقبض)</label>
-              {renderSlider('زاوية الميل', config.handle.angleX, v => updateHandle('angleX', v), -45, 45)}
-              {renderSlider('عمق الاختراق', config.handle.insertionDepth, v => updateHandle('insertionDepth', v), 0, 50)}
+              <label className="block text-[10px] font-bold text-[var(--text-dim)] uppercase mb-3 text-right">
+                قياسات القطعة
+              </label>
+              <div className="bg-black/30 p-3 rounded space-y-1 text-[11px] font-mono" dir="rtl">
+                <div className="flex justify-between"><span>الطول الإجمالي:</span><span>{config.tube.totalLength} مم</span></div>
+                <div className="flex justify-between"><span>زاوية الميل (A):</span><span>{config.assembly.tiltAngle}°</span></div>
+                <div className="flex justify-between"><span>زاوية المقبض (B):</span><span>{config.handle.angleX}°, {config.handle.angleY}°</span></div>
+                <div className="flex justify-between"><span>عمق الاختراق:</span><span>{config.assembly.insertionDistance} مم</span></div>
+              </div>
             </section>
 
-            {/* Visual Checks for this stage */}
+            {/* المعايير البصرية */}
             <section className="mb-4">
               <label className="block text-[10px] font-bold text-[var(--text-dim)] uppercase mb-3 text-right">المعايير البصرية</label>
-              {renderToggle('عرض مسار القطع (Laser Dot)', !!config.showToolpathPreview,
+              {renderToggle('إظهار حلقات التقسيم (Body Slices)', !!config.showBodySlices,
+                () => onUpdate({ ...config, showBodySlices: !config.showBodySlices }),
+                '#ffaa33')}
+              {renderToggle('خيال الأطراف المقطوعة (Ghost)', !!config.showGhostPart,
+                () => onUpdate({ ...config, showGhostPart: !config.showGhostPart }),
+                '#00ff88')}
+              {renderToggle('مسار القطع (Toolpath)', !!config.showToolpathPreview,
                 () => onUpdate({ ...config, showToolpathPreview: !config.showToolpathPreview }),
                 '#00ffff')}
-              {renderToggle('إظهار خيال الأطراف', !!config.showGhostPart,
-                () => onUpdate({ ...config, showGhostPart: !config.showGhostPart }),
-                '#00ff00')}
             </section>
           </>
         )}

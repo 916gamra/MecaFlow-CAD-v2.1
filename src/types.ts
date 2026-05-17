@@ -71,6 +71,8 @@ export interface TubeConfig {
   height: number;
   thickness: number;
   totalLength: number;
+  fixedHeadLength: number;
+  fixedTailLength: number;
   partLength: number;
   cornerRadius: number;
   shape: 'دائري' | 'بيضاوي' | 'مخصص';
@@ -119,6 +121,7 @@ export interface ZeroGapState {
   showBorders: boolean;
   showGhostPart?: boolean;
   showToolpathPreview?: boolean;
+  showBodySlices?: boolean;
 }
 
 export interface CADState {
